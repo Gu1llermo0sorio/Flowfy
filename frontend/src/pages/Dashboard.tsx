@@ -49,10 +49,10 @@ export default function Dashboard() {
   const { data: summary, isLoading: summaryLoading } = useQuery<MonthlySummary>({
     queryKey: ['monthly-summary', month, year],
     queryFn: async () => {
-      const { data } = await apiClient.get<MonthlySummary>(
+      const { data } = await apiClient.get<{ success: boolean; data: MonthlySummary }>(
         `/transactions/summary/monthly?month=${month}&year=${year}`
       );
-      return data;
+      return data.data;
     },
   });
 

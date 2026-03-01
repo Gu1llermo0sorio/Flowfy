@@ -71,21 +71,29 @@ budgetRouter.post('/', validate(budgetSchema), async (req: AuthRequest, res, nex
   try {
     const data = req.body as z.infer<typeof budgetSchema>;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const budget = await prisma.budget.upsert({
+    // findFirst + create/update instead of upsert because Prisma upsert
+    // can't handle NULL in compound unique keys on PostgreSQL (NULL != NULL)
+    const existing = await prisma.budget.findFirst({
       where: {
-        familyId_categoryId_userId_month_year: {
-          familyId: req.familyId!,
-          categoryId: data.categoryId,
-          // Prisma compound unique with nullable field requires explicit null
-          userId: (data.userId ?? null) as unknown as string,
-          month: data.month,
-          year: data.year,
-        },
+        familyId: req.familyId!,
+        categoryId: data.categoryId,
+        userId: data.userId ?? null,
+        month: data.month,
+        year: data.year,
       },
-      update: { amount: data.amount, rollover: data.rollover ?? false },
-      create: { ...data, familyId: req.familyId! },
     });
+
+    let budget;
+    if (existing) {
+      budget = await prisma.budget.update({
+        where: { id: existing.id },
+        data: { amount: data.amount, rollover: data.rollover ?? false },
+      });
+    } else {
+      budget = await prisma.budget.create({
+        data: { ...data, familyId: req.familyId! },
+      });
+    }
 
     res.status(201).json({ success: true, data: budget });
   } catch (err) {
