@@ -50,7 +50,15 @@ export default function LoginPage() {
           transition={{ duration: 0.6 }}
           className="text-center"
         >
-          <img src="/flowfy-logo.svg" alt="Flowfy" className="h-16 w-auto mb-6 mx-auto drop-shadow-2xl" />
+          <motion.img
+            src="/flowfy-logo.svg"
+            alt="Flowfy"
+            className="h-16 w-auto mb-6 mx-auto"
+            initial={{ opacity: 0, scale: 0.7, y: -20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.2 }}
+            style={{ filter: 'drop-shadow(0 0 24px rgba(13,148,136,0.5))' }}
+          />
           <p className="text-xl text-white/80 max-w-sm">
             Las finanzas de tu familia, gamificadas e inteligentes.
           </p>
@@ -80,7 +88,14 @@ export default function LoginPage() {
         >
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center mb-8">
-            <img src="/flowfy-logo.svg" alt="Flowfy" className="h-10 w-auto" />
+            <motion.img
+              src="/flowfy-logo.svg"
+              alt="Flowfy"
+              className="h-10 w-auto"
+              initial={{ opacity: 0, x: -20, scale: 0.85 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+            />
           </div>
 
           <h2 className="text-2xl font-bold text-white mb-2">Bienvenido de nuevo</h2>
