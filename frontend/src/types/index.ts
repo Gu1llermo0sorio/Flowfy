@@ -5,7 +5,9 @@ export interface User {
   email: string;
   name: string;
   avatar?: string;
-  role: 'owner' | 'partner';
+  avatarUrl?: string;
+  avatarColor?: string;
+  role: 'owner' | 'partner' | 'ADMIN';
   familyId: string;
   familyName?: string;
   familyCurrency?: string;

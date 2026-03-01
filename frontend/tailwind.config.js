@@ -28,16 +28,53 @@ export default {
           700: '#4338ca',
           purple: '#8b5cf6',
         },
-        // Positive
-        positive: '#10b981',
-        // Danger
-        danger: '#f43f5e',
-        // Warning
-        warning: '#f59e0b',
+        // Semantic status colors with levels
+        positive: {
+          50:  '#ecfdf5',
+          100: '#d1fae5',
+          200: '#a7f3d0',
+          300: '#6ee7b7',
+          400: '#34d399',
+          500: '#10b981',
+          600: '#059669',
+          700: '#047857',
+        },
+        danger: {
+          50:  '#fff1f2',
+          100: '#ffe4e6',
+          200: '#fecdd3',
+          300: '#fda4af',
+          400: '#fb7185',
+          500: '#f43f5e',
+          600: '#e11d48',
+        },
+        warning: {
+          50:  '#fffbeb',
+          100: '#fef3c7',
+          200: '#fde68a',
+          300: '#fcd34d',
+          400: '#fbbf24',
+          500: '#f59e0b',
+          600: '#d97706',
+        },
         // Dark base
         slate: {
           850: '#1a2537',
           950: '#0a0f1e',
+        },
+        // Surface tokens — driven by CSS variables so they flip between dark/light
+        surface: {
+          50:  'var(--s50)',
+          100: 'var(--s100)',
+          200: 'var(--s200)',
+          300: 'var(--s300)',
+          400: 'var(--s400)',
+          500: 'var(--s500)',
+          600: 'var(--s600)',
+          700: 'var(--s700)',
+          800: 'var(--s800)',
+          900: 'var(--s900)',
+          950: 'var(--s950)',
         },
       },
       fontFamily: {

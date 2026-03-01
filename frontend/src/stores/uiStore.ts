@@ -11,6 +11,11 @@ export interface Toast {
   duration?: number; // ms, 0 = sticky
 }
 
+/** Shorthand format accepted by addToast: type='success', message='text' */
+export type ToastInput =
+  | Omit<Toast, 'id'>
+  | { type: ToastVariant; message: string; title?: string; duration?: number };
+
 export interface XPToast {
   id: string;
   xp: number;
@@ -38,7 +43,7 @@ interface UIStore {
   decrementNotificationCount: () => void;
 
   // Toasts
-  addToast: (toast: Omit<Toast, 'id'>) => void;
+  addToast: (toast: ToastInput) => void;
   removeToast: (id: string) => void;
   clearToasts: () => void;
 
@@ -75,12 +80,19 @@ export const useUIStore = create<UIStore>()(
           notificationCount: Math.max(0, state.notificationCount - 1),
         })),
 
-      addToast: (toast) => {
+      addToast: (input) => {
         const id = `toast-${++toastCounter}`;
-        set((state) => ({
-          toasts: [...state.toasts, { ...toast, id }],
-        }));
-        // Auto-remove after duration (default 4s)
+        // Normalise shorthand { type, message } to full Toast shape
+        const toast: Toast = 'variant' in input
+          ? { ...input, id }
+          : {
+              id,
+              variant: input.type,
+              title: input.title ?? input.message,
+              message: input.title ? input.message : undefined,
+              duration: input.duration,
+            };
+        set((state) => ({ toasts: [...state.toasts, toast] }));
         const duration = toast.duration ?? 4000;
         if (duration > 0) {
           setTimeout(() => {

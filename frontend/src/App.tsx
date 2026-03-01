@@ -17,6 +17,8 @@ const GoalsPage = React.lazy(() => import('./pages/GoalsPage'));
 const FamilyPage = React.lazy(() => import('./pages/FamilyPage'));
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
+const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
+const AdminPage = React.lazy(() => import('./pages/AdminPage'));
 
 // React Query client
 const queryClient = new QueryClient({
@@ -85,6 +87,8 @@ export default function App() {
                 <Route path="/family" element={<FamilyPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/admin" element={<AdminPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

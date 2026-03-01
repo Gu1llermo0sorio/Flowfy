@@ -3,7 +3,39 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* ── Surface color tokens (dark mode = default) ──────────── */
+:root {
+  /* Dark surface palette */
+  --s50:  #e8edf4;
+  --s100: #c8d4e3;
+  --s200: #a0b4c9;
+  --s300: #7a94ad;
+  --s400: #94a3b8;
+  --s500: #64748b;
+  --s600: #475569;
+  --s700: #2d3f55;
+  --s800: #1e293b;
+  --s900: #0f172a;
+  --s950: #070d1a;
+  /* Main text on dark bg */
+  --text-main: #f0f4f8;
+}
 
+/* Light mode overrides when html does NOT have .dark class */
+html:not(.dark) {
+  --s50:  #0f172a;
+  --s100: #1e293b;
+  --s200: #334155;
+  --s300: #475569;
+  --s400: #64748b;
+  --s500: #94a3b8;
+  --s600: #cbd5e1;
+  --s700: #e2e8f0;
+  --s800: #f1f5f9;
+  --s900: #ffffff;
+  --s950: #f8fafc;
+  --text-main: #0f172a;
+}
 /* ── CSS Variables ──────────────────────────────────────── */
 :root {
   --color-primary: #0d9488;
@@ -27,13 +59,15 @@
   }
 
   body {
-    @apply font-sans antialiased bg-slate-50 text-slate-900;
-    @apply dark:bg-slate-900 dark:text-slate-50;
+    @apply font-sans antialiased;
+    background-color: var(--s900);
+    color: var(--text-main);
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
+    color: var(--text-main);
   }
 
   /* Remove default button styles */
@@ -60,8 +94,8 @@
 @layer components {
   /* Card */
   .card {
-    @apply bg-white rounded-2xl shadow-card p-5;
-    @apply dark:bg-slate-800 dark:shadow-card-dark;
+    background-color: var(--s800);
+    @apply rounded-2xl shadow-card p-5;
   }
 
   /* Gradient text */
@@ -77,16 +111,18 @@
   .amount {
     @apply font-mono font-medium tabular-nums;
   }
-  .amount-positive { @apply amount text-positive; }
-  .amount-negative { @apply amount text-danger; }
-  .amount-warning  { @apply amount text-warning; }
+  .amount-positive { @apply amount text-positive-500; }
+  .amount-negative { @apply amount text-danger-500; }
+  .amount-warning  { @apply amount text-warning-500; }
 
   /* Input base */
   .input-base {
-    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm;
-    @apply placeholder:text-slate-400;
+    @apply w-full rounded-xl px-4 py-2.5 text-sm;
+    background-color: var(--s800);
+    border: 1px solid var(--s700);
+    color: var(--s50);
+    @apply placeholder:text-surface-500;
     @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
-    @apply dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100;
     @apply transition-shadow duration-150;
   }
 
@@ -102,21 +138,23 @@
     @apply px-5 py-2.5 text-sm;
   }
   .btn-secondary {
-    @apply btn bg-white border border-slate-200 text-slate-700 shadow-card;
-    @apply hover:bg-slate-50;
-    @apply dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100;
-    @apply px-5 py-2.5 text-sm;
+    @apply btn px-5 py-2.5 text-sm shadow-card;
+    background-color: var(--s800);
+    border: 1px solid var(--s700);
+    color: var(--s200);
   }
+  .btn-secondary:hover { background-color: var(--s700); }
+
   .btn-ghost {
-    @apply btn text-slate-600 hover:bg-slate-100;
-    @apply dark:text-slate-300 dark:hover:bg-slate-700/50;
-    @apply px-3 py-2 text-sm;
+    @apply btn px-3 py-2 text-sm;
+    color: var(--s400);
   }
+  .btn-ghost:hover { background-color: var(--s700); color: var(--s50); }
   .btn-danger {
     @apply btn bg-rose-500 text-white hover:bg-rose-600 px-5 py-2.5 text-sm;
   }
   .btn-icon {
-    @apply btn p-2 rounded-xl;
+    @apply btn p-2 rounded-xl text-surface-400 hover:text-surface-50 hover:bg-surface-700 transition-colors;
   }
 
   /* Badge */
@@ -161,9 +199,25 @@
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   .glass {
-    @apply backdrop-blur-md bg-white/80 dark:bg-slate-800/80;
+    @apply backdrop-blur-md;
+    background-color: color-mix(in srgb, var(--s900) 80%, transparent);
   }
   .teal-glow {
     box-shadow: 0 0 30px rgba(13, 148, 136, 0.3);
   }
+  /* Adaptive main text - respects surface color variable */
+  .text-main { color: var(--text-main); }
+  .text-surface-adaptive { color: var(--s400); }
 }
+
+/* ── Light mode text patches ─────────────────────────────── */
+/* Ensures text-white on surface backgrounds adapts to light mode  */
+html:not(.dark) [class*="bg-surface"] .text-white { color: var(--s50); }
+html:not(.dark) [class*="bg-surface"] h1 { color: var(--s50); }
+html:not(.dark) [class*="bg-surface"] h2 { color: var(--s50); }
+html:not(.dark) [class*="bg-surface"] h3 { color: var(--s50); }
+html:not(.dark) [class*="bg-surface"] input:not([type="color"]) { color: var(--s50); color-scheme: light; }
+html:not(.dark) [class*="bg-surface"] select { color: var(--s50); color-scheme: light; }
+html:not(.dark) [class*="bg-surface"] textarea { color: var(--s50); color-scheme: light; }
+html:not(.dark) [class*="bg-surface"] input::placeholder { color: var(--s500); }
+html:not(.dark) [class*="bg-surface"] textarea::placeholder { color: var(--s500); }

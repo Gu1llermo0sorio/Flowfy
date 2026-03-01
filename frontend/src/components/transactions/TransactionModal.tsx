@@ -1,14 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
+import { X, Check, Loader2, TrendingUp, TrendingDown, Camera, Upload, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import clsx from 'clsx';
 import { useCategories, useCreateTransaction, useUpdateTransaction, type TxPayload } from '../../hooks/useTransactions';
 import { useUIStore } from '../../stores/uiStore';
 import { amountToCentavos, centavosToAmount } from '../../lib/formatters';
+import { apiClient } from '../../lib/apiClient';
 import type { Transaction } from '../../types';
 
 // ── Schema ─────────────────────────────────────────────────────────────────────
@@ -48,12 +49,20 @@ export default function TransactionModal({ transaction, onClose }: Props) {
   const createMutation = useCreateTransaction();
   const updateMutation = useUpdateTransaction();
 
+  // Receipt upload state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+  const [extractedAmounts, setExtractedAmounts] = useState<Array<{ raw: string; value: number }>>([]);
+
   const {
     register,
     handleSubmit,
     control,
     watch,
     reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -85,6 +94,42 @@ export default function TransactionModal({ transaction, onClose }: Props) {
     reset((prev) => ({ ...prev, subcategoryId: '' }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategoryId]);
+
+  // ── Receipt handlers ──────────────────────────────────────────────────────
+  const handleFileSelect = (file: File) => {
+    setReceiptFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setReceiptPreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+    setUploadStatus('idle');
+    setExtractedAmounts([]);
+  };
+
+  const handleUploadReceipt = async () => {
+    if (!receiptFile) return;
+    setUploadStatus('uploading');
+    try {
+      const formData = new FormData();
+      formData.append('file', receiptFile);
+      formData.append('institution', 'other');
+      const { data } = await apiClient.post('/documents/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setUploadStatus('done');
+      // Poll for extracted data
+      if (data?.data?.id) {
+        setTimeout(async () => {
+          try {
+            const { data: docData } = await apiClient.get(`/documents/${data.data.id}`);
+            const amounts = (docData?.data?.extractedData as { amounts?: Array<{ raw: string; value: number }> })?.amounts ?? [];
+            if (amounts.length > 0) setExtractedAmounts(amounts.slice(0, 5));
+          } catch { /* ok */ }
+        }, 4000);
+      }
+    } catch {
+      setUploadStatus('error');
+    }
+  };
 
   const onSubmit = async (values: FormValues) => {
     try {
@@ -358,7 +403,90 @@ export default function TransactionModal({ transaction, onClose }: Props) {
               <input
                 {...register('tagsRaw')}
                 placeholder="Ej: familia, fijo, supermercado"
-                className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-surface-500 focus:outline-none focus:ring-1 focus:ring-primary-500/40"
+                className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2.5 text-sm text-surface-50 placeholder-surface-500 focus:outline-none focus:ring-1 focus:ring-primary-500/40"
+              />
+            </div>
+
+            {/* Receipt upload */}
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-surface-400">
+                Comprobante / Foto de ticket <span className="text-surface-500">(opcional)</span>
+              </label>
+              {!receiptPreview ? (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex flex-col items-center gap-2 py-4 rounded-xl border-2 border-dashed border-surface-700 text-surface-500 hover:border-primary-500/50 hover:text-surface-300 transition-colors"
+                >
+                  <Camera className="w-5 h-5" />
+                  <span className="text-xs">Subir foto o PDF del ticket</span>
+                  <span className="text-[10px] text-surface-600">JPG, PNG o PDF · máx. 10 MB</span>
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative rounded-xl overflow-hidden border border-surface-700">
+                    <img src={receiptPreview} alt="Comprobante" className="w-full max-h-40 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => { setReceiptFile(null); setReceiptPreview(null); setUploadStatus('idle'); setExtractedAmounts([]); }}
+                      className="absolute top-2 right-2 p-1 rounded-lg bg-black/50 text-white hover:bg-black/70"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {uploadStatus === 'idle' && (
+                    <button
+                      type="button"
+                      onClick={handleUploadReceipt}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium transition-colors"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      Subir y analizar con OCR
+                    </button>
+                  )}
+                  {uploadStatus === 'uploading' && (
+                    <div className="flex items-center gap-2 text-xs text-surface-400 justify-center py-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary-400" />
+                      Analizando imagen...
+                    </div>
+                  )}
+                  {uploadStatus === 'done' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-emerald-400">
+                        <Check className="w-3.5 h-3.5" />
+                        Comprobante guardado
+                        {extractedAmounts.length === 0 && <span className="text-surface-500 ml-1">— procesando OCR...</span>}
+                      </div>
+                      {extractedAmounts.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-surface-500 flex items-center gap-1"><Sparkles className="w-3 h-3" /> Montos detectados — hacé click para usar:</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {extractedAmounts.map((a, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => setValue('amount', a.value)}
+                                className="px-2.5 py-1 rounded-lg bg-primary-500/15 border border-primary-500/30 text-primary-400 text-xs font-mono hover:bg-primary-500/25 transition-colors"
+                              >
+                                {a.raw}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {uploadStatus === 'error' && (
+                    <p className="text-xs text-rose-400 flex items-center gap-1"><X className="w-3 h-3" />Error al subir el archivo</p>
+                  )}
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
               />
             </div>
 
