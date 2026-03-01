@@ -91,7 +91,7 @@ function BudgetModal({
   onClose: () => void;
 }) {
   const { data: categories = [], isLoading: loadingCats } = useCategories();
-  const createBudget = useCreateBudget(month, year);
+  const createBudget = useCreateBudget();
 
   const {
     register,
