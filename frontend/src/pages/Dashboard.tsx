@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiClient } from '../lib/apiClient';
 import { formatCurrency, getMonthName } from '../lib/formatters';
 import { useAuthStore } from '../stores/authStore';
@@ -49,7 +50,7 @@ export default function Dashboard() {
     queryKey: ['monthly-summary', month, year],
     queryFn: async () => {
       const { data } = await apiClient.get<MonthlySummary>(
-        `/transactions/summary?month=${month}&year=${year}`
+        `/transactions/summary/monthly?month=${month}&year=${year}`
       );
       return data;
     },
@@ -101,31 +102,97 @@ export default function Dashboard() {
           <>
             <StatCard
               label="Balance del mes"
-              value={formatCurrency(
-                (summary?.totalIncome ?? 0) - (summary?.totalExpenses ?? 0)
-              )}
+              value={formatCurrency((summary?.income ?? 0) - (summary?.expenses ?? 0))}
               icon={Wallet}
             />
             <StatCard
               label="Ingresos"
-              value={formatCurrency(summary?.totalIncome ?? 0)}
+              value={formatCurrency(summary?.income ?? 0)}
               icon={ArrowUpRight}
               variant="positive"
             />
             <StatCard
               label="Gastos"
-              value={formatCurrency(summary?.totalExpenses ?? 0)}
+              value={formatCurrency(summary?.expenses ?? 0)}
               icon={ArrowDownRight}
               variant="negative"
             />
             <StatCard
-              label="Transacciones"
-              value={String(summary?.transactionCount ?? 0)}
+              label="Tasa de ahorro"
+              value={`${(summary?.savingsRate ?? 0).toFixed(1)}%`}
               icon={TrendingUp}
             />
           </>
         )}
       </div>
+
+      {/* Expenses by category pie chart */}
+      {summary?.byCategory && summary.byCategory.length > 0 && (
+        <div className="card p-4">
+          <h2 className="font-semibold text-white mb-4">Gastos por categoría</h2>
+          <div className="flex flex-col md:flex-row gap-4 items-center">
+            <div className="w-full md:w-48 h-48 flex-shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={summary.byCategory}
+                    dataKey="amount"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={2}
+                  >
+                    {summary.byCategory.map((entry, index) => (
+                      <Cell
+                        key={entry.categoryId ?? index}
+                        fill={entry.color || `hsl(${(index * 47) % 360}, 60%, 55%)`}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number) => [
+                      formatCurrency(value),
+                      'Gasto',
+                    ]}
+                    contentStyle={{
+                      background: '#1e293b',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      color: '#f1f5f9',
+                      fontSize: '12px',
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {summary.byCategory.slice(0, 8).map((cat, index) => {
+                const total = summary.expenses || 1;
+                const pct = ((cat.amount / total) * 100).toFixed(1);
+                return (
+                  <div key={cat.categoryId ?? index} className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                      style={{ background: cat.color || `hsl(${(index * 47) % 360}, 60%, 55%)` }}
+                    />
+                    <span className="text-xs text-surface-300 truncate flex-1">
+                      {cat.icon} {cat.name}
+                    </span>
+                    <span className="text-xs font-mono text-surface-400 ml-auto">
+                      {pct}%
+                    </span>
+                    <span className="text-xs font-mono text-surface-500">
+                      {formatCurrency(cat.amount)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recent transactions */}
       <div className="card p-4 space-y-3">
@@ -175,15 +242,15 @@ export default function Dashboard() {
                   {tx.description}
                 </p>
                 <p className="text-xs text-surface-400">
-                  {tx.category?.name ?? 'Sin categoría'}
+                  {tx.category?.nameEs ?? 'Sin categoría'}
                 </p>
               </div>
               <span
                 className={`font-mono text-sm font-bold ${
-                  tx.type === 'INCOME' ? 'amount-positive' : 'amount-negative'
+                  tx.type === 'income' ? 'amount-positive' : 'amount-negative'
                 }`}
               >
-                {tx.type === 'INCOME' ? '+' : '-'}
+                {tx.type === 'income' ? '+' : '-'}
                 {formatCurrency(tx.amount, tx.currency)}
               </span>
             </div>

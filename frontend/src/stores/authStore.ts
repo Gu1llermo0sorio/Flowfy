@@ -37,6 +37,7 @@ interface AuthStore {
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  setUser: (user: Partial<User>) => void;
   setAccessToken: (token: string) => void;
   clearError: () => void;
   reset: () => void;
@@ -52,6 +53,12 @@ export const useAuthStore = create<AuthStore>()(
 
       setAccessToken: (token) => {
         set({ accessToken: token });
+      },
+
+      setUser: (partial) => {
+        const current = get().user;
+        if (!current) return;
+        set({ user: enrichUser({ ...current, ...partial }) });
       },
 
       clearError: () => set({ error: null }),
