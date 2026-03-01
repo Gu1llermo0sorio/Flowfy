@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Loader2, Users } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
+import { FlowfyLogo } from '../../components/ui/FlowfyLogo';
 
 const schema = z.object({
   familyName: z
@@ -69,14 +70,13 @@ export default function RegisterPage() {
       >
         {/* Logo */}
         <div className="flex items-center mb-8">
-          <motion.img
-            src="/flowfy-logo.svg"
-            alt="Flowfy"
-            className="h-10 w-auto"
+          <motion.div
             initial={{ opacity: 0, x: -20, scale: 0.85 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
             transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-          />
+          >
+            <FlowfyLogo className="h-10 w-auto" />
+          </motion.div>
         </div>
 
         <h2 className="text-2xl font-bold text-white mb-2">Crear cuenta familiar</h2>

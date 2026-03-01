@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Bell, Sun, Moon } from 'lucide-react';
+import { FlowfyLogo } from '../ui/FlowfyLogo';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatXP } from '../../lib/formatters';
@@ -21,14 +22,13 @@ export default function Navbar() {
     <header className="h-16 bg-surface-800 border-b border-surface-700 flex items-center px-4 md:px-6 gap-4 flex-shrink-0">
       {/* Mobile logo */}
       <div className="md:hidden flex items-center">
-        <motion.img
-          src="/flowfy-logo.svg"
-          alt="Flowfy"
-          className="h-8 w-auto"
+        <motion.div
           initial={{ opacity: 0, x: -16 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-        />
+        >
+          <FlowfyLogo className="h-8 w-auto" />
+        </motion.div>
       </div>
 
       {/* Spacer */}
