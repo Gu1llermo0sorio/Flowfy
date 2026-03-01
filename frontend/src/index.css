@@ -210,14 +210,48 @@ html:not(.dark) {
   .text-surface-adaptive { color: var(--s400); }
 }
 
-/* ── Light mode text patches ─────────────────────────────── */
-/* Ensures text-white on surface backgrounds adapts to light mode  */
-html:not(.dark) [class*="bg-surface"] .text-white { color: var(--s50); }
-html:not(.dark) [class*="bg-surface"] h1 { color: var(--s50); }
-html:not(.dark) [class*="bg-surface"] h2 { color: var(--s50); }
-html:not(.dark) [class*="bg-surface"] h3 { color: var(--s50); }
-html:not(.dark) [class*="bg-surface"] input:not([type="color"]) { color: var(--s50); color-scheme: light; }
-html:not(.dark) [class*="bg-surface"] select { color: var(--s50); color-scheme: light; }
-html:not(.dark) [class*="bg-surface"] textarea { color: var(--s50); color-scheme: light; }
-html:not(.dark) [class*="bg-surface"] input::placeholder { color: var(--s500); }
-html:not(.dark) [class*="bg-surface"] textarea::placeholder { color: var(--s500); }
+/* ── Light mode: comprehensive text-white fix ──────────────── */
+/*
+  Rules go inside @layer base to avoid Tailwind circular-dependency errors.
+  Specificity 0,2,x > utilities 0,1,0 so these wins despite lower cascade layer.
+*/
+@layer base {
+  /* In light mode ALL .text-white → dark readable color */
+  html:not(.dark) .text-white { color: var(--s50); }
+
+  /* Restore white on elements with their own colored (non-surface) bg class */
+  html:not(.dark) [class*="bg-primary"] .text-white,
+  html:not(.dark) [class*="bg-teal"] .text-white,
+  html:not(.dark) [class*="bg-emerald"] .text-white,
+  html:not(.dark) [class*="bg-rose"] .text-white,
+  html:not(.dark) [class*="bg-red"] .text-white,
+  html:not(.dark) [class*="bg-indigo"] .text-white,
+  html:not(.dark) [class*="bg-violet"] .text-white,
+  html:not(.dark) [class*="bg-amber"] .text-white,
+  html:not(.dark) [class*="bg-green"] .text-white,
+  html:not(.dark) [class*="bg-blue"] .text-white,
+  html:not(.dark) [class*="bg-cyan"] .text-white,
+  html:not(.dark) [class*="bg-gradient"] .text-white { color: white; }
+
+  /* Restore white when the element itself is a colored-bg element */
+  html:not(.dark) .text-white[class*="bg-primary"],
+  html:not(.dark) .text-white[class*="bg-teal"],
+  html:not(.dark) .text-white[class*="bg-rose"],
+  html:not(.dark) .text-white[class*="bg-red"],
+  html:not(.dark) .text-white[class*="bg-gradient"] { color: white; }
+
+  /* Restore white for inline-style backgrounds (e.g. avatar circles) */
+  html:not(.dark) [style*="background"] .text-white,
+  html:not(.dark) [style*="background-color"] .text-white { color: white; }
+
+  /* btn-primary and btn-danger always have colored backgrounds */
+  html:not(.dark) .btn-primary,
+  html:not(.dark) .btn-danger { color: white; }
+
+  /* Inputs & textareas: ensure proper contrast in light mode */
+  html:not(.dark) input:not([type="color"]):not([type="range"]),
+  html:not(.dark) select,
+  html:not(.dark) textarea { color: var(--s50); }
+  html:not(.dark) input::placeholder,
+  html:not(.dark) textarea::placeholder { color: var(--s500); }
+}

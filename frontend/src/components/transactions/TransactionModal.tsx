@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Loader2, TrendingUp, TrendingDown, Camera, Upload, Sparkles } from 'lucide-react';
+import { X, Check, Loader2, TrendingUp, TrendingDown, Camera, Sparkles, Zap, RefreshCw, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import clsx from 'clsx';
 import { useCategories, useCreateTransaction, useUpdateTransaction, type TxPayload } from '../../hooks/useTransactions';
@@ -11,6 +11,30 @@ import { useUIStore } from '../../stores/uiStore';
 import { amountToCentavos, centavosToAmount } from '../../lib/formatters';
 import { apiClient } from '../../lib/apiClient';
 import type { Transaction } from '../../types';
+
+// ── AI parsed receipt type ─────────────────────────────────────────────────────
+interface ParsedReceipt {
+  merchant: string | null;
+  description: string | null;
+  amount: number | null;
+  currency: 'UYU' | 'USD' | 'EUR' | null;
+  date: string | null;          // YYYY-MM-DD
+  categoryHint: string | null;  // food|transport|entertainment|health|shopping|utilities|education|housing|other
+  paymentMethod: string | null;
+  confidence: number;
+}
+
+// Category hint keyword map (Spanish category names)
+const HINT_KEYWORDS: Record<string, string[]> = {
+  food:          ['comida', 'alimenta', 'supermercado', 'restaurante', 'almacén', 'delivery', 'bebida', 'café', 'panadería', 'carnicería'],
+  transport:     ['transporte', 'uber', 'taxi', 'combustible', 'nafta', 'gasolina', 'bus', 'boletera', 'peaje', 'estacionamiento'],
+  entertainment: ['entreten', 'cine', 'streaming', 'netflix', 'juego', 'deporte', 'salida', 'recreo'],
+  health:        ['salud', 'farmacia', 'médico', 'doctor', 'hospital', 'clínica', 'medicamento'],
+  shopping:      ['ropa', 'compra', 'tiend', 'electrónico', 'calzado', 'zapatería', 'ferretería'],
+  utilities:     ['servicio', 'luz', 'agua', 'internet', 'teléfono', 'celular', 'gas'],
+  education:     ['educación', 'estudio', 'libro', 'curso', 'universidad', 'escuela'],
+  housing:       ['alquiler', 'vivienda', 'arriendo', 'expensas', 'cuota'],
+};
 
 // ── Schema ─────────────────────────────────────────────────────────────────────
 const schema = z.object({
@@ -49,12 +73,13 @@ export default function TransactionModal({ transaction, onClose }: Props) {
   const createMutation = useCreateTransaction();
   const updateMutation = useUpdateTransaction();
 
-  // Receipt upload state
+  // Receipt & AI state
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
-  const [extractedAmounts, setExtractedAmounts] = useState<Array<{ raw: string; value: number }>>([]);
+  const [aiStatus, setAiStatus] = useState<'idle' | 'analyzing' | 'done' | 'error'>('idle');
+  const [aiResult, setAiResult] = useState<ParsedReceipt | null>(null);
+  const [aiApplied, setAiApplied] = useState(false);
 
   const {
     register,
@@ -95,40 +120,62 @@ export default function TransactionModal({ transaction, onClose }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategoryId]);
 
-  // ── Receipt handlers ──────────────────────────────────────────────────────
+  // ── Receipt + AI handlers ────────────────────────────────────────────────
   const handleFileSelect = (file: File) => {
     setReceiptFile(file);
+    setAiResult(null);
+    setAiApplied(false);
     const reader = new FileReader();
     reader.onload = (e) => setReceiptPreview(e.target?.result as string);
     reader.readAsDataURL(file);
-    setUploadStatus('idle');
-    setExtractedAmounts([]);
+    // Auto-trigger AI analysis
+    handleAnalyzeReceipt(file);
   };
 
-  const handleUploadReceipt = async () => {
-    if (!receiptFile) return;
-    setUploadStatus('uploading');
+  const handleAnalyzeReceipt = async (file: File) => {
+    setAiStatus('analyzing');
+    setAiResult(null);
+    setAiApplied(false);
     try {
       const formData = new FormData();
-      formData.append('file', receiptFile);
-      formData.append('institution', 'other');
-      const { data } = await apiClient.post('/documents/upload', formData, {
+      formData.append('file', file);
+      const { data } = await apiClient.post('/documents/analyze', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setUploadStatus('done');
-      // Poll for extracted data
-      if (data?.data?.id) {
-        setTimeout(async () => {
-          try {
-            const { data: docData } = await apiClient.get(`/documents/${data.data.id}`);
-            const amounts = (docData?.data?.extractedData as { amounts?: Array<{ raw: string; value: number }> })?.amounts ?? [];
-            if (amounts.length > 0) setExtractedAmounts(amounts.slice(0, 5));
-          } catch { /* ok */ }
-        }, 4000);
-      }
+      setAiResult(data?.data ?? null);
+      setAiStatus('done');
     } catch {
-      setUploadStatus('error');
+      setAiStatus('error');
     }
+  };
+
+  // Match categoryHint to an actual category id
+  const matchCategoryId = (hint: string | null): string | null => {
+    if (!hint || !categories.length) return null;
+    const keywords = HINT_KEYWORDS[hint] ?? [hint];
+    const found = categories.find((c) =>
+      keywords.some((kw) => c.name.toLowerCase().includes(kw))
+    );
+    return found?.id ?? null;
+  };
+
+  const applyAIResults = () => {
+    if (!aiResult) return;
+    if (aiResult.description) setValue('description', aiResult.description);
+    if (aiResult.amount && aiResult.amount > 0) setValue('amount', aiResult.amount);
+    if (aiResult.currency === 'UYU' || aiResult.currency === 'USD') setValue('currency', aiResult.currency);
+    if (aiResult.date) {
+      // Convert YYYY-MM-DD to datetime-local format
+      const d = new Date(aiResult.date + 'T12:00:00');
+      if (!isNaN(d.getTime())) setValue('date', format(d, "yyyy-MM-dd'T'HH:mm"));
+    }
+    if (aiResult.paymentMethod && ['cash','debit','credit','transfer','other'].includes(aiResult.paymentMethod)) {
+      setValue('paymentMethod', aiResult.paymentMethod as FormValues['paymentMethod']);
+    }
+    const catId = matchCategoryId(aiResult.categoryHint);
+    if (catId) setValue('categoryId', catId);
+    setAiApplied(true);
+    addToast({ type: 'success', message: 'Formulario completado con los datos detectados' });
   };
 
   const onSubmit = async (values: FormValues) => {
@@ -407,86 +454,189 @@ export default function TransactionModal({ transaction, onClose }: Props) {
               />
             </div>
 
-            {/* Receipt upload */}
+            {/* Receipt / AI scan */}
             <div className="space-y-2">
               <label className="block text-xs font-medium text-surface-400">
-                Comprobante / Foto de ticket <span className="text-surface-500">(opcional)</span>
+                Comprobante IA{' '}
+                <span className="text-surface-500">(opcional — completa el form automáticamente)</span>
               </label>
-              {!receiptPreview ? (
+
+              {/* Drop zone — no file yet */}
+              {!receiptPreview && (
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex flex-col items-center gap-2 py-4 rounded-xl border-2 border-dashed border-surface-700 text-surface-500 hover:border-primary-500/50 hover:text-surface-300 transition-colors"
+                  className="w-full flex flex-col items-center gap-2 py-5 rounded-xl border-2 border-dashed border-surface-700 text-surface-500 hover:border-primary-500/60 hover:text-primary-400 transition-colors group"
                 >
-                  <Camera className="w-5 h-5" />
-                  <span className="text-xs">Subir foto o PDF del ticket</span>
-                  <span className="text-[10px] text-surface-600">JPG, PNG o PDF · máx. 10 MB</span>
-                </button>
-              ) : (
-                <div className="space-y-2">
-                  <div className="relative rounded-xl overflow-hidden border border-surface-700">
-                    <img src={receiptPreview} alt="Comprobante" className="w-full max-h-40 object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => { setReceiptFile(null); setReceiptPreview(null); setUploadStatus('idle'); setExtractedAmounts([]); }}
-                      className="absolute top-2 right-2 p-1 rounded-lg bg-black/50 text-white hover:bg-black/70"
-                    >
-                      <X size={14} />
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <Camera className="w-5 h-5" />
+                    <Sparkles className="w-4 h-4 group-hover:text-primary-400" />
                   </div>
-                  {uploadStatus === 'idle' && (
+                  <span className="text-xs font-medium">Subir foto o PDF del ticket</span>
+                  <span className="text-[10px] text-surface-600">La IA detectará comercio, monto, fecha y categoría</span>
+                </button>
+              )}
+
+              {/* File selected — preview + analysis */}
+              {receiptPreview && (
+                <div className="space-y-2.5">
+                  {/* Image preview */}
+                  <div className="relative rounded-xl overflow-hidden border border-surface-700">
+                    <img src={receiptPreview} alt="Comprobante" className="w-full max-h-36 object-cover" />
                     <button
                       type="button"
-                      onClick={handleUploadReceipt}
-                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium transition-colors"
+                      onClick={() => {
+                        setReceiptFile(null);
+                        setReceiptPreview(null);
+                        setAiStatus('idle');
+                        setAiResult(null);
+                        setAiApplied(false);
+                      }}
+                      className="absolute top-2 right-2 p-1 rounded-lg bg-black/60 text-white hover:bg-black/80"
                     >
-                      <Upload className="w-3.5 h-3.5" />
-                      Subir y analizar con OCR
+                      <X size={13} />
                     </button>
-                  )}
-                  {uploadStatus === 'uploading' && (
-                    <div className="flex items-center gap-2 text-xs text-surface-400 justify-center py-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-primary-400" />
-                      Analizando imagen...
-                    </div>
-                  )}
-                  {uploadStatus === 'done' && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-emerald-400">
-                        <Check className="w-3.5 h-3.5" />
-                        Comprobante guardado
-                        {extractedAmounts.length === 0 && <span className="text-surface-500 ml-1">— procesando OCR...</span>}
-                      </div>
-                      {extractedAmounts.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-xs text-surface-500 flex items-center gap-1"><Sparkles className="w-3 h-3" /> Montos detectados — hacé click para usar:</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {extractedAmounts.map((a, i) => (
-                              <button
-                                key={i}
-                                type="button"
-                                onClick={() => setValue('amount', a.value)}
-                                className="px-2.5 py-1 rounded-lg bg-primary-500/15 border border-primary-500/30 text-primary-400 text-xs font-mono hover:bg-primary-500/25 transition-colors"
-                              >
-                                {a.raw}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                    {/* Badge de estado sobre la imagen */}
+                    <div className="absolute top-2 left-2">
+                      {aiStatus === 'analyzing' && (
+                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 text-primary-300 text-[10px] font-medium">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Analizando...
+                        </span>
+                      )}
+                      {aiStatus === 'done' && (
+                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 text-emerald-300 text-[10px] font-medium">
+                          <Sparkles className="w-3 h-3" /> IA lista
+                        </span>
+                      )}
+                      {aiStatus === 'error' && (
+                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 text-rose-300 text-[10px] font-medium">
+                          <AlertCircle className="w-3 h-3" /> Error
+                        </span>
                       )}
                     </div>
+                  </div>
+
+                  {/* Analyzing */}
+                  {aiStatus === 'analyzing' && (
+                    <div className="flex items-center gap-2.5 p-3 rounded-xl bg-primary-500/10 border border-primary-500/20">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary-400 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-primary-300">Analizando con IA…</p>
+                        <p className="text-[10px] text-surface-500 mt-0.5">Claude está leyendo el comprobante</p>
+                      </div>
+                    </div>
                   )}
-                  {uploadStatus === 'error' && (
-                    <p className="text-xs text-rose-400 flex items-center gap-1"><X className="w-3 h-3" />Error al subir el archivo</p>
+
+                  {/* AI result — show detected fields */}
+                  {aiStatus === 'done' && aiResult && (
+                    <div className="p-3 rounded-xl bg-surface-800 border border-surface-700 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-xs font-semibold text-surface-200">
+                          <Sparkles className="w-3.5 h-3.5 text-primary-400" />
+                          Datos detectados
+                          <span className="text-surface-500 font-normal">
+                            ({Math.round((aiResult.confidence ?? 0) * 100)}% confianza)
+                          </span>
+                        </span>
+                        {aiApplied && (
+                          <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+                            <Check className="w-3 h-3" /> Aplicado
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Field chips */}
+                      <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                        {aiResult.merchant && (
+                          <div className="col-span-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
+                            <span className="text-surface-400 shrink-0">Comercio</span>
+                            <span className="font-medium text-surface-100 truncate">{aiResult.merchant}</span>
+                          </div>
+                        )}
+                        {aiResult.description && (
+                          <div className="col-span-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
+                            <span className="text-surface-400 shrink-0">Descripción</span>
+                            <span className="font-medium text-surface-100 truncate">{aiResult.description}</span>
+                          </div>
+                        )}
+                        {aiResult.amount != null && aiResult.amount > 0 && (
+                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
+                            <span className="text-surface-400 shrink-0">Monto</span>
+                            <span className="font-mono font-semibold text-emerald-400">
+                              {aiResult.amount.toLocaleString('es-UY')} {aiResult.currency ?? ''}
+                            </span>
+                          </div>
+                        )}
+                        {aiResult.date && (
+                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
+                            <span className="text-surface-400 shrink-0">Fecha</span>
+                            <span className="font-medium text-surface-100">{aiResult.date}</span>
+                          </div>
+                        )}
+                        {aiResult.categoryHint && (
+                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
+                            <span className="text-surface-400 shrink-0">Categoría</span>
+                            <span className="font-medium text-surface-100 capitalize">{aiResult.categoryHint}</span>
+                          </div>
+                        )}
+                        {aiResult.paymentMethod && (
+                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
+                            <span className="text-surface-400 shrink-0">Pago</span>
+                            <span className="font-medium text-surface-100 capitalize">{aiResult.paymentMethod}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex gap-2 pt-1">
+                        {!aiApplied ? (
+                          <button
+                            type="button"
+                            onClick={applyAIResults}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold transition-colors"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            Completar formulario
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={applyAIResults}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface-700 hover:bg-surface-600 text-surface-300 text-xs font-medium transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            Volver a aplicar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error state */}
+                  {aiStatus === 'error' && (
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                      <div className="flex items-center gap-2 text-xs text-rose-300">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        No se pudo analizar el comprobante
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => receiptFile && handleAnalyzeReceipt(receiptFile)}
+                        className="text-[10px] text-primary-400 hover:text-primary-300 underline ml-2 shrink-0"
+                      >
+                        Reintentar
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
+
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp,application/pdf"
                 className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ''; }}
               />
             </div>
 
