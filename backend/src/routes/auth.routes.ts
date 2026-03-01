@@ -42,10 +42,12 @@ const addPartnerSchema = z.object({
 
 // ── Helper: set refresh token cookie ──────────────────────────────────────────
 function setRefreshCookie(res: Response, token: string, rememberMe = false): void {
+  const isProd = process.env.NODE_ENV === 'production';
   res.cookie('refreshToken', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: isProd,
+    // 'none' required for cross-site (Surge → Railway). 'lax' for local dev.
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: rememberMe ? 7 * 24 * 60 * 60 * 1000 : undefined, // session cookie if not remember
     path: '/api/auth',
   });
