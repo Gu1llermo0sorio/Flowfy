@@ -71,12 +71,14 @@ budgetRouter.post('/', validate(budgetSchema), async (req: AuthRequest, res, nex
   try {
     const data = req.body as z.infer<typeof budgetSchema>;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const budget = await prisma.budget.upsert({
       where: {
         familyId_categoryId_userId_month_year: {
           familyId: req.familyId!,
           categoryId: data.categoryId,
-          userId: data.userId ?? null,
+          // Prisma compound unique with nullable field requires explicit null
+          userId: (data.userId ?? null) as unknown as string,
           month: data.month,
           year: data.year,
         },

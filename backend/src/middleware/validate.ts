@@ -12,10 +12,10 @@ export function validate(schema: ZodSchema) {
       next();
     } catch (err) {
       if (err instanceof ZodError) {
-        res.status(400).json({
+        res.status(422).json({
           success: false,
-          message: 'Datos inválidos',
-          errors: err.errors.map((e) => ({
+          error: 'Validation failed',
+          details: err.errors.map((e) => ({
             field: e.path.join('.'),
             message: e.message,
           })),
@@ -37,10 +37,10 @@ export function validateQuery(schema: ZodSchema) {
       next();
     } catch (err) {
       if (err instanceof ZodError) {
-        res.status(400).json({
+        res.status(422).json({
           success: false,
-          message: 'Parámetros de consulta inválidos',
-          errors: err.errors.map((e) => ({
+          error: 'Validation failed',
+          details: err.errors.map((e) => ({
             field: e.path.join('.'),
             message: e.message,
           })),

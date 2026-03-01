@@ -52,7 +52,7 @@ transactionRouter.get(
   validateQuery(listTransactionsQuerySchema),
   async (req: AuthRequest, res, next) => {
     try {
-      const q = req.query as z.infer<typeof listTransactionsQuerySchema>;
+      const q = req.query as unknown as z.infer<typeof listTransactionsQuerySchema>;
       const skip = (q.page - 1) * q.limit;
 
       const where: Record<string, unknown> = { familyId: req.familyId };
@@ -75,9 +75,11 @@ transactionRouter.get(
         };
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const prismaWhere = where as any;
       const [transactions, total] = await Promise.all([
         prisma.transaction.findMany({
-          where: where as Parameters<typeof prisma.transaction.findMany>[0]['where'],
+          where: prismaWhere,
           include: {
             category: { select: { id: true, nameEs: true, icon: true, color: true } },
             subcategory: { select: { id: true, nameEs: true, icon: true } },
@@ -87,9 +89,7 @@ transactionRouter.get(
           skip,
           take: q.limit,
         }),
-        prisma.transaction.count({
-          where: where as Parameters<typeof prisma.transaction.count>[0]['where'],
-        }),
+        prisma.transaction.count({ where: prismaWhere }),
       ]);
 
       res.json({

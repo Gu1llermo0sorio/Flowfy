@@ -1,0 +1,169 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Variables ──────────────────────────────────────── */
+:root {
+  --color-primary: #0d9488;
+  --color-accent: #6366f1;
+  --color-positive: #10b981;
+  --color-danger: #f43f5e;
+  --color-warning: #f59e0b;
+}
+
+/* ── Base ────────────────────────────────────────────────── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    @apply scroll-smooth;
+    font-size: 16px;
+  }
+
+  body {
+    @apply font-sans antialiased bg-slate-50 text-slate-900;
+    @apply dark:bg-slate-900 dark:text-slate-50;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  /* Remove default button styles */
+  button {
+    @apply cursor-pointer;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    @apply w-1.5 h-1.5;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full dark:bg-slate-600;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400 dark:bg-slate-500;
+  }
+}
+
+/* ── Components ──────────────────────────────────────────── */
+@layer components {
+  /* Card */
+  .card {
+    @apply bg-white rounded-2xl shadow-card p-5;
+    @apply dark:bg-slate-800 dark:shadow-card-dark;
+  }
+
+  /* Gradient text */
+  .text-gradient-flowfy {
+    @apply bg-gradient-flowfy bg-clip-text text-transparent;
+  }
+
+  .text-gradient-accent {
+    @apply bg-gradient-accent bg-clip-text text-transparent;
+  }
+
+  /* Amount display */
+  .amount {
+    @apply font-mono font-medium tabular-nums;
+  }
+  .amount-positive { @apply amount text-positive; }
+  .amount-negative { @apply amount text-danger; }
+  .amount-warning  { @apply amount text-warning; }
+
+  /* Input base */
+  .input-base {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm;
+    @apply placeholder:text-slate-400;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100;
+    @apply transition-shadow duration-150;
+  }
+
+  /* Button variants */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-medium rounded-xl;
+    @apply transition-all duration-150 active:scale-95;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-flowfy text-white shadow-teal;
+    @apply hover:shadow-teal-lg hover:brightness-105;
+    @apply px-5 py-2.5 text-sm;
+  }
+  .btn-secondary {
+    @apply btn bg-white border border-slate-200 text-slate-700 shadow-card;
+    @apply hover:bg-slate-50;
+    @apply dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100;
+    @apply px-5 py-2.5 text-sm;
+  }
+  .btn-ghost {
+    @apply btn text-slate-600 hover:bg-slate-100;
+    @apply dark:text-slate-300 dark:hover:bg-slate-700/50;
+    @apply px-3 py-2 text-sm;
+  }
+  .btn-danger {
+    @apply btn bg-rose-500 text-white hover:bg-rose-600 px-5 py-2.5 text-sm;
+  }
+  .btn-icon {
+    @apply btn p-2 rounded-xl;
+  }
+
+  /* Badge */
+  .chip {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+  .chip-teal   { @apply chip bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300; }
+  .chip-violet { @apply chip bg-accent-50 text-accent-500 dark:bg-violet-900/30 dark:text-violet-300; }
+  .chip-green  { @apply chip bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300; }
+  .chip-red    { @apply chip bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300; }
+  .chip-amber  { @apply chip bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300; }
+  .chip-slate  { @apply chip bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300; }
+
+  /* Progress bar */
+  .progress-bar {
+    @apply h-2 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden;
+  }
+  .progress-fill {
+    @apply h-full rounded-full transition-all duration-500 ease-out;
+  }
+
+  /* Skeleton */
+  .skeleton {
+    @apply animate-pulse bg-slate-200 dark:bg-slate-700 rounded-xl;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-slate-100 dark:border-slate-700;
+  }
+
+  /* Floating XP toast */
+  .xp-toast {
+    @apply fixed pointer-events-none font-bold text-primary-600 text-sm;
+    @apply animate-float-up;
+  }
+}
+
+/* ── Utilities ───────────────────────────────────────────── */
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .glass {
+    @apply backdrop-blur-md bg-white/80 dark:bg-slate-800/80;
+  }
+  .teal-glow {
+    box-shadow: 0 0 30px rgba(13, 148, 136, 0.3);
+  }
+}

@@ -22,6 +22,7 @@ export function errorHandler(
 
   res.status(statusCode).json({
     success: false,
+    error: err.message ?? 'Error interno del servidor',
     message: err.message ?? 'Error interno del servidor',
     code: err.code,
     ...(isDev && { stack: err.stack }),

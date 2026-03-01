@@ -15,10 +15,11 @@ exchangeRateRouter.get('/latest', async (_req, res, next) => {
 
     if (!rate) {
       // Return a fallback rate if none is in DB yet
-      return res.json({
+      res.json({
         success: true,
         data: { rate: 39.0, date: new Date().toISOString(), source: 'fallback' },
       });
+      return;
     }
 
     res.json({ success: true, data: rate });

@@ -1,0 +1,23 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: flowfy-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flowfy
+      POSTGRES_PASSWORD: flowfy123
+      POSTGRES_DB: flowfy
+    ports:
+      - "5432:5432"
+    volumes:
+      - flowfy_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowfy"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  flowfy_pgdata:
