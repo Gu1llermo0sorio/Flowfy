@@ -19,11 +19,8 @@ export default function Navbar() {
   return (
     <header className="h-16 bg-surface-800 border-b border-surface-700 flex items-center px-4 md:px-6 gap-4 flex-shrink-0">
       {/* Mobile logo */}
-      <div className="md:hidden flex items-center gap-2">
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center">
-          💰
-        </div>
-        <span className="font-bold text-white text-lg">Flowfy</span>
+      <div className="md:hidden flex items-center">
+        <img src="/flowfy-logo.svg" alt="Flowfy" className="h-8 w-auto" />
       </div>
 
       {/* Spacer */}

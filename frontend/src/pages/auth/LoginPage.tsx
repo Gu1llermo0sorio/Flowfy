@@ -50,10 +50,7 @@ export default function LoginPage() {
           transition={{ duration: 0.6 }}
           className="text-center"
         >
-          <div className="w-20 h-20 rounded-3xl bg-white/20 flex items-center justify-center text-5xl mb-6 mx-auto">
-            💰
-          </div>
-          <h1 className="text-4xl font-bold mb-4">Flowfy</h1>
+          <img src="/flowfy-logo.svg" alt="Flowfy" className="h-16 w-auto mb-6 mx-auto drop-shadow-2xl" />
           <p className="text-xl text-white/80 max-w-sm">
             Las finanzas de tu familia, gamificadas e inteligentes.
           </p>
@@ -82,11 +79,8 @@ export default function LoginPage() {
           className="w-full max-w-sm"
         >
           {/* Mobile logo */}
-          <div className="lg:hidden flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-2xl">
-              💰
-            </div>
-            <span className="text-2xl font-bold text-white">Flowfy</span>
+          <div className="lg:hidden flex items-center mb-8">
+            <img src="/flowfy-logo.svg" alt="Flowfy" className="h-10 w-auto" />
           </div>
 
           <h2 className="text-2xl font-bold text-white mb-2">Bienvenido de nuevo</h2>

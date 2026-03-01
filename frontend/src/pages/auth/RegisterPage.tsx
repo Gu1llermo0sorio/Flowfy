@@ -68,11 +68,8 @@ export default function RegisterPage() {
         className="w-full max-w-md"
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-2xl">
-            💰
-          </div>
-          <span className="text-2xl font-bold text-white">Flowfy</span>
+        <div className="flex items-center mb-8">
+          <img src="/flowfy-logo.svg" alt="Flowfy" className="h-10 w-auto" />
         </div>
 
         <h2 className="text-2xl font-bold text-white mb-2">Crear cuenta familiar</h2>

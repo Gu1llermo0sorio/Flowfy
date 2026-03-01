@@ -51,20 +51,30 @@ export default function Sidebar() {
       }`}
     >
       {/* Logo */}
-      <div className={`flex items-center h-16 px-4 border-b border-surface-700 ${sidebarOpen ? 'gap-3' : 'justify-center'}`}>
-        <div className="w-8 h-8 flex-shrink-0 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-lg">
-          💰
-        </div>
-        <AnimatePresence>
-          {sidebarOpen && (
-            <motion.span
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: 'auto' }}
-              exit={{ opacity: 0, width: 0 }}
-              className="font-bold text-lg text-white overflow-hidden whitespace-nowrap"
-            >
-              Flowfy
-            </motion.span>
+      <div className="flex items-center justify-center h-16 px-4 border-b border-surface-700 overflow-hidden">
+        <AnimatePresence mode="wait">
+          {sidebarOpen ? (
+            <motion.img
+              key="full"
+              src="/flowfy-logo.svg"
+              alt="Flowfy"
+              className="h-9 w-auto"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            />
+          ) : (
+            <motion.img
+              key="icon"
+              src="/flowfy-icon.svg"
+              alt="Flowfy"
+              className="w-8 h-8"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            />
           )}
         </AnimatePresence>
       </div>
