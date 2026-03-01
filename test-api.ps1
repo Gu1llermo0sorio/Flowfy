@@ -30,7 +30,7 @@ try { $tx1 = api POST "/transactions" @{ amount=150000; currency="UYU"; descript
 try { $tx2 = api POST "/transactions" @{ amount=45000; currency="UYU"; description="Supermercado test"; date="2026-03-01T12:00:00.000Z"; type="expense"; categoryId=$script:CAT_ID; paymentMethod="debit" }; if ($tx2.data.id) { ok "POST expense"; $script:TX2_ID = $tx2.data.id } else { fail "POST expense" "sin id" } } catch { fail "POST expense" $_.Exception.Message }
 try { $tx3 = api POST "/transactions" @{ amount=30000; currency="UYU"; description="Nafta test"; date="2026-03-02T09:00:00.000Z"; type="expense"; categoryId=$script:CAT_ID; paymentMethod="cash" }; if ($tx3.data.id) { ok "POST expense2"; $script:TX3_ID = $tx3.data.id } else { fail "POST expense2" "sin id" } } catch { fail "POST expense2" $_.Exception.Message }
 try { $txList = api GET "/transactions?limit=10"; if ($txList.data.Count -ge 1) { ok "GET /transactions ($($txList.data.Count) items, total=$($txList.meta.total))" } else { fail "GET /transactions" "vacio" } } catch { fail "GET /transactions" $_.Exception.Message }
-try { $sum = api GET "/transactions/summary/monthly?month=3&year=2026"; if ($null -ne $sum.income) { ok "GET /summary/monthly (income=$($sum.income) exp=$($sum.expenses) savings=$($sum.savings))" } else { fail "GET /summary/monthly" "campos nulos" } } catch { fail "GET /summary/monthly" $_.Exception.Message }
+try { $sum = api GET "/transactions/summary/monthly?month=3&year=2026"; if ($null -ne $sum.data.income) { ok "GET /summary/monthly (income=$($sum.data.income) exp=$($sum.data.expenses) savings=$($sum.data.savings))" } else { fail "GET /summary/monthly" "campos nulos" } } catch { fail "GET /summary/monthly" $_.Exception.Message }
 try { $upd = api PATCH "/transactions/$script:TX2_ID" @{ description="Supermercado EDITADO" }; if ($upd.data.description -eq "Supermercado EDITADO") { ok "PATCH /transactions/:id" } else { fail "PATCH /transactions/:id" "desc no cambio: $($upd.data.description)" } } catch { fail "PATCH /transactions/:id" $_.Exception.Message }
 try { api DELETE "/transactions/$script:TX3_ID" | Out-Null; ok "DELETE /transactions/:id" } catch { fail "DELETE /transactions/:id" $_.Exception.Message }
 
@@ -59,7 +59,7 @@ if ($script:NOTIF_ID) { try { $mr = api PATCH "/notifications/$script:NOTIF_ID/r
 try { $mra = api PATCH "/notifications/read-all" @{}; if ($mra.success) { ok "PATCH /notifications/read-all" } else { fail "PATCH notif/read-all" "success=false" } } catch { fail "PATCH notif/read-all" $_.Exception.Message }
 
 section "GAMIFICATION"
-try { $gam = api GET "/gamification/stats"; ok "GET /gamification/stats (xp=$($gam.data.xp) level=$($gam.data.level) streak=$($gam.data.streakDays))" } catch { fail "GET /gamification/stats" $_.Exception.Message }
+try { $gam = api GET "/gamification/my-stats"; ok "GET /gamification/my-stats (xp=$($gam.data.xp) level=$($gam.data.level) streak=$($gam.data.streakDays))" } catch { fail "GET /gamification/my-stats" $_.Exception.Message }
 try { $b = api GET "/gamification/badges"; ok "GET /gamification/badges ($($b.data.Count))" } catch { fail "GET /gamification/badges" $_.Exception.Message }
 
 section "AUTH final"
