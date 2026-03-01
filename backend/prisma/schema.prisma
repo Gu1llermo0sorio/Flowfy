@@ -1,0 +1,351 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Family {
+  id           String   @id @default(cuid())
+  name         String
+  currency     String   @default("UYU")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users         User[]
+  transactions  Transaction[]
+  budgets       Budget[]
+  goals         Goal[]
+  challenges    Challenge[]
+  recommendations Recommendation[]
+  categories    Category[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  avatar       String?
+  role         String    @default("owner") // "owner" | "partner"
+  familyId     String
+  xp           Int       @default(0)
+  level        Int       @default(1)
+  streakDays   Int       @default(0)
+  lastActive   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  family           Family             @relation(fields: [familyId], references: [id])
+  transactions     Transaction[]
+  budgets          Budget[]
+  goals            Goal[]
+  challenges       Challenge[]
+  userBadges       UserBadge[]
+  notifications    Notification[]
+  connectedAccounts ConnectedAccount[]
+  importedDocuments ImportedDocument[]
+  refreshTokens    RefreshToken[]
+
+  @@index([familyId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String
+  nameEs      String  // Spanish name for display
+  icon        String  // emoji
+  color       String  // hex color
+  isCustom    Boolean @default(false)
+  familyId    String? // null = system category, set = family custom category
+  sortOrder   Int     @default(0)
+
+  family       Family?       @relation(fields: [familyId], references: [id])
+  subcategories Subcategory[]
+  transactions  Transaction[]
+  budgets       Budget[]
+
+  @@index([familyId])
+}
+
+model Subcategory {
+  id         String @id @default(cuid())
+  name       String
+  nameEs     String // Spanish name
+  icon       String? // optional emoji
+  categoryId String
+  sortOrder  Int    @default(0)
+
+  category     Category      @relation(fields: [categoryId], references: [id])
+  transactions Transaction[]
+
+  @@index([categoryId])
+}
+
+model Transaction {
+  id                    String   @id @default(cuid())
+  amount                Int      // stored in centavos to avoid float issues
+  currency              String   // "UYU" | "USD"
+  amountUYU             Int      // always converted to UYU centavos
+  exchangeRateUsed      Float?   // the rate used for conversion
+  description           String
+  date                  DateTime
+  type                  String   // "income" | "expense"
+  categoryId            String
+  subcategoryId         String?
+  userId                String
+  familyId              String
+  paymentMethod         String?  // "cash" | "debit" | "credit" | "transfer" | "other"
+  receiptUrl            String?
+  notes                 String?
+  tags                  String[]
+  isRecurring           Boolean  @default(false)
+  recurringId           String?
+  importSource          String?  // "manual" | "pdf" | "ocr" | "email"
+  institutionId         String?  // "itau" | "oca" | "other"
+  isOcaInstallment      Boolean  @default(false)
+  ocaTotalAmount        Int?
+  ocaTotalInstallments  Int?
+  ocaCurrentInstallment Int?
+  linkedTransactionId   String?  // links Itaú OCA payment to OCA statement
+  aiCategoryConfidence  Int?     // 0–100 confidence score from Claude
+  needsReview           Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  category     Category      @relation(fields: [categoryId], references: [id])
+  subcategory  Subcategory?  @relation(fields: [subcategoryId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  family       Family        @relation(fields: [familyId], references: [id])
+  recurring    RecurringTransaction? @relation(fields: [recurringId], references: [id])
+
+  @@index([familyId])
+  @@index([userId])
+  @@index([categoryId])
+  @@index([date])
+  @@index([recurringId])
+}
+
+model RecurringTransaction {
+  id            String   @id @default(cuid())
+  familyId      String
+  userId        String
+  amount        Int
+  currency      String
+  description   String
+  type          String   // "income" | "expense"
+  categoryId    String
+  subcategoryId String?
+  frequency     String   // "daily" | "weekly" | "biweekly" | "monthly" | "yearly"
+  startDate     DateTime
+  endDate       DateTime?
+  nextDate      DateTime
+  isActive      Boolean  @default(true)
+  paymentMethod String?
+  notes         String?
+  tags          String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([familyId])
+  @@index([nextDate])
+}
+
+model Budget {
+  id         String   @id @default(cuid())
+  familyId   String
+  categoryId String
+  userId     String?  // null = family-wide budget
+  amount     Int      // centavos UYU
+  currency   String   @default("UYU")
+  month      Int      // 1–12
+  year       Int
+  rollover   Boolean  @default(false)
+  rolloverAmount Int  @default(0) // unused budget carried from previous month
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  family   Family   @relation(fields: [familyId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+  user     User?    @relation(fields: [userId], references: [id])
+
+  @@unique([familyId, categoryId, userId, month, year])
+  @@index([familyId, month, year])
+}
+
+model Goal {
+  id             String    @id @default(cuid())
+  familyId       String
+  userId         String?   // null = family goal
+  name           String
+  description    String?
+  type           String    // "savings" | "debt" | "spending_reduction" | "income"
+  targetAmount   Int       // centavos UYU
+  currency       String    @default("UYU")
+  targetDate     DateTime?
+  currentAmount  Int       @default(0)
+  isCompleted    Boolean   @default(false)
+  completedAt    DateTime?
+  emoji          String?
+  milestones     Int[]     // percentage milestones hit: [25, 50, 75, 100]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([familyId])
+  @@index([userId])
+}
+
+model Badge {
+  id          String @id @default(cuid())
+  code        String @unique
+  name        String
+  nameEs      String // Spanish name
+  description String
+  descriptionEs String // Spanish description
+  icon        String // emoji
+  xpReward    Int
+  sortOrder   Int    @default(0)
+
+  userBadges UserBadge[]
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeId    String
+  unlockedAt DateTime @default(now())
+  progress   Int      @default(0) // for partial progress tracking
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id])
+
+  @@unique([userId, badgeId])
+  @@index([userId])
+}
+
+model Challenge {
+  id          String   @id @default(cuid())
+  familyId    String
+  userId      String?  // null = family challenge
+  name        String
+  description String
+  type        String   // built-in code or "custom"
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean  @default(true)
+  isCompleted Boolean  @default(false)
+  completedAt DateTime?
+  xpReward    Int
+  progress    Int      @default(0) // 0–100
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([familyId])
+}
+
+model Recommendation {
+  id          String   @id @default(cuid())
+  familyId    String
+  content     String
+  type        String   // "spending" | "savings" | "goal" | "alert" | "celebration"
+  ctaAction   String?  // optional JSON with action data
+  isRead      Boolean  @default(false)
+  isDismissed Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  family Family @relation(fields: [familyId], references: [id])
+
+  @@index([familyId, isDismissed])
+}
+
+model ExchangeRate {
+  id           String   @id @default(cuid())
+  fromCurrency String   // "USD"
+  toCurrency   String   // "UYU"
+  rate         Float
+  date         DateTime @db.Date
+  source       String   @default("exchangerate-api")
+  createdAt    DateTime @default(now())
+
+  @@unique([fromCurrency, toCurrency, date])
+  @@index([date])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // "budget_warning" | "bill_due" | "goal_milestone" | "streak" | "recommendation" | "salary" | "oca_due" | "level_up" | "badge"
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  metadata  Json?    // extra data for deep linking
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model ConnectedAccount {
+  id                   String    @id @default(cuid())
+  userId               String
+  type                 String    // "imap" | "gmail"
+  institution          String    // "itau" | "oca" | "other"
+  email                String
+  credentialsEncrypted String    // AES-256 encrypted credential blob
+  lastSync             DateTime?
+  isActive             Boolean   @default(true)
+  syncErrors           Int       @default(0)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ImportedDocument {
+  id            String   @id @default(cuid())
+  userId        String
+  filename      String
+  fileUrl       String
+  type          String   // "pdf" | "image" | "email"
+  institution   String?  // "itau" | "oca" | "other"
+  status        String   @default("pending") // "pending" | "processing" | "processed" | "error"
+  extractedData Json?    // raw extracted transactions for review
+  errorMessage  String?
+  transactionCount Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
