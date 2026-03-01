@@ -1,0 +1,21 @@
+{
+  "name": "Flowfy — Finanzas Familiares",
+  "short_name": "Flowfy",
+  "description": "Gestioná las finanzas de tu familia de forma inteligente",
+  "theme_color": "#0d9488",
+  "background_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "start_url": "/",
+  "scope": "/",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/flowfy-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"]
+}

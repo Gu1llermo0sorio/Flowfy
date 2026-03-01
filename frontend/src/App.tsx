@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './stores/authStore';
@@ -6,6 +6,7 @@ import { useUIStore } from './stores/uiStore';
 import AppLayout from './components/layout/AppLayout';
 import ToastContainer from './components/ui/ToastContainer';
 import XPToastContainer from './components/ui/XPToastContainer';
+import OnboardingWizard from './components/OnboardingWizard';
 
 // Lazy-loaded pages
 const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'));
@@ -19,6 +20,9 @@ const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
 const AdminPage = React.lazy(() => import('./pages/AdminPage'));
+const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
+const JoinFamilyPage = React.lazy(() => import('./pages/JoinFamilyPage'));
+const CategoriesPage = React.lazy(() => import('./pages/CategoriesPage'));
 
 // React Query client
 const queryClient = new QueryClient({
@@ -30,6 +34,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const ONBOARDED_KEY = 'flowfy-onboarded';
 
 // Page loading skeleton
 function PageLoader() {
@@ -70,29 +76,46 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Onboarding gate — shows wizard once for new authenticated users
+function OnboardingGate({ children }: { children: React.ReactNode }) {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const [onboarded, setOnboarded] = useState(() => !!localStorage.getItem(ONBOARDED_KEY));
+
+  if (accessToken && !onboarded) {
+    return <OnboardingWizard onComplete={() => setOnboarded(true)} />;
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <ThemeProvider>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/login" element={<RequireGuest><LoginPage /></RequireGuest>} />
-              <Route path="/register" element={<RequireGuest><RegisterPage /></RequireGuest>} />
-              <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/transactions" element={<TransactionsPage />} />
-                <Route path="/budgets" element={<BudgetsPage />} />
-                <Route path="/goals" element={<GoalsPage />} />
-                <Route path="/family" element={<FamilyPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/notifications" element={<NotificationsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/admin" element={<AdminPage />} />
-              </Route>
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
+          <OnboardingGate>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/login" element={<RequireGuest><LoginPage /></RequireGuest>} />
+                <Route path="/register" element={<RequireGuest><RegisterPage /></RequireGuest>} />
+                {/* Public join page */}
+                <Route path="/join/:token" element={<JoinFamilyPage />} />
+                <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/transactions" element={<TransactionsPage />} />
+                  <Route path="/budgets" element={<BudgetsPage />} />
+                  <Route path="/goals" element={<GoalsPage />} />
+                  <Route path="/family" element={<FamilyPage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/profile" element={<ProfilePage />} />
+                  <Route path="/notifications" element={<NotificationsPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/settings/categories" element={<CategoriesPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </OnboardingGate>
           <ToastContainer />
           <XPToastContainer />
         </ThemeProvider>

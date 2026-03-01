@@ -1,12 +1,12 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, ArrowLeftRight, PiggyBank, Target, User } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, PiggyBank, Target, BarChart2 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, label: 'Inicio' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Movimientos' },
   { to: '/budgets', icon: PiggyBank, label: 'Presupuesto' },
   { to: '/goals', icon: Target, label: 'Metas' },
-  { to: '/profile', icon: User, label: 'Perfil' },
+  { to: '/reports', icon: BarChart2, label: 'Reportes' },
 ];
 
 export default function BottomNav() {

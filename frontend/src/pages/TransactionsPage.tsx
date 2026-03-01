@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Trash2, Pencil, ChevronLeft, ChevronRight,
-  TrendingUp, TrendingDown, Wallet, Filter, X
+  TrendingUp, TrendingDown, Wallet, Filter, X, Upload
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format, isToday, isYesterday, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
@@ -13,6 +13,7 @@ import {
 import { useUIStore } from '../stores/uiStore';
 import { formatCurrency } from '../lib/formatters';
 import TransactionModal from '../components/transactions/TransactionModal';
+import ImportCSVModal from '../components/transactions/ImportCSVModal';
 import type { Transaction, TransactionType } from '../types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ export default function TransactionsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | undefined>();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
 
   const search = useDebounce(searchRaw, 400);
   const addToast = useUIStore((s) => s.addToast);
@@ -109,13 +111,23 @@ export default function TransactionsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">Movimientos</h1>
-        <button
-          onClick={() => { setEditingTx(undefined); setShowModal(true); }}
-          className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-primary-900/40"
-        >
-          <Plus size={16} />
-          <span className="hidden sm:inline">Nuevo</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-surface-700 hover:bg-surface-600 text-surface-200 rounded-xl text-sm font-medium transition-colors"
+            title="Importar CSV"
+          >
+            <Upload size={15} />
+            <span className="hidden sm:inline">Importar</span>
+          </button>
+          <button
+            onClick={() => { setEditingTx(undefined); setShowModal(true); }}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-primary-900/40"
+          >
+            <Plus size={16} />
+            <span className="hidden sm:inline">Nuevo</span>
+          </button>
+        </div>
       </div>
 
       {/* Month navigator */}
@@ -256,6 +268,7 @@ export default function TransactionsPage() {
       )}
 
       {showModal && <TransactionModal transaction={editingTx} onClose={handleCloseModal} />}
+      {showImport && <ImportCSVModal onClose={() => setShowImport(false)} />}
 
       {/* Delete confirmation */}
       <AnimatePresence>

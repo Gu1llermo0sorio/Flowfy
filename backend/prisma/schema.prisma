@@ -24,6 +24,7 @@ model Family {
   challenges    Challenge[]
   recommendations Recommendation[]
   categories    Category[]
+  invitations   FamilyInvitation[]
 }
 
 model User {
@@ -348,4 +349,21 @@ model ImportedDocument {
 
   @@index([userId])
   @@index([status])
+}
+
+model FamilyInvitation {
+  id         String   @id @default(cuid())
+  familyId   String
+  token      String   @unique
+  email      String?  // optional: pre-fill the invite for a specific email
+  role       String   @default("partner") // "partner"
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdBy  String   // userId of the inviter
+  createdAt  DateTime @default(now())
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([familyId])
 }

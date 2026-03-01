@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { randomBytes } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -126,6 +127,113 @@ familyRouter.get('/leaderboard', async (req: AuthRequest, res, next) => {
       orderBy: { xp: 'desc' },
     });
     res.json({ success: true, data: members });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/family/invite — generate invitation link (owner only) ─────────────
+familyRouter.post('/invite', async (req: AuthRequest, res, next) => {
+  try {
+    const email = (req.body?.email as string | undefined) ?? undefined;
+    const token = randomBytes(24).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    const invite = await prisma.familyInvitation.create({
+      data: {
+        familyId: req.familyId!,
+        token,
+        email: email ?? null,
+        expiresAt,
+        createdBy: req.userId!,
+      },
+    });
+
+    const baseUrl = process.env.FRONTEND_URL ?? 'https://flowfy.surge.sh';
+    const link = `${baseUrl}/join/${invite.token}`;
+
+    res.status(201).json({ success: true, data: { token: invite.token, link, expiresAt } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/family/invitations — list active invites for this family ─────────
+familyRouter.get('/invitations', async (req: AuthRequest, res, next) => {
+  try {
+    const invites = await prisma.familyInvitation.findMany({
+      where: { familyId: req.familyId!, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const baseUrl = process.env.FRONTEND_URL ?? 'https://flowfy.surge.sh';
+    const data = invites.map((inv) => ({
+      ...inv,
+      link: `${baseUrl}/join/${inv.token}`,
+    }));
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── DELETE /api/family/invitations/:token — revoke invitation ─────────────────
+familyRouter.delete('/invitations/:token', async (req: AuthRequest, res, next) => {
+  try {
+    const invite = await prisma.familyInvitation.findFirst({
+      where: { token: req.params.token, familyId: req.familyId! },
+    });
+    if (!invite) throw createError('Invitación no encontrada', 404, 'NOT_FOUND');
+    await prisma.familyInvitation.delete({ where: { id: invite.id } });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/family/join/:token — validate an invitation (no auth needed) ─────
+familyRouter.get('/join/:token', async (_req, res, next) => {
+  try {
+    const inv = await prisma.familyInvitation.findUnique({
+      where: { token: _req.params.token },
+      include: { family: { select: { id: true, name: true } } },
+    });
+    if (!inv || inv.usedAt || inv.expiresAt < new Date()) {
+      throw createError('Invitación inválida o expirada', 410, 'INVITATION_EXPIRED');
+    }
+    res.json({ success: true, data: { familyName: inv.family.name, email: inv.email, token: inv.token } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/family/join/:token — accept invitation (requires auth) ──────────
+familyRouter.post('/join/:token', async (req: AuthRequest, res, next) => {
+  try {
+    const inv = await prisma.familyInvitation.findUnique({
+      where: { token: req.params.token },
+    });
+    if (!inv || inv.usedAt || inv.expiresAt < new Date()) {
+      throw createError('Invitación inválida o expirada', 410, 'INVITATION_EXPIRED');
+    }
+
+    // Move user to the invited family
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: req.userId! },
+        data: { familyId: inv.familyId, role: inv.role },
+      }),
+      prisma.familyInvitation.update({
+        where: { id: inv.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    const updatedUser = await prisma.user.findUnique({
+      where: { id: req.userId! },
+      select: { id: true, name: true, email: true, familyId: true, role: true },
+    });
+
+    res.json({ success: true, data: updatedUser });
   } catch (err) {
     next(err);
   }

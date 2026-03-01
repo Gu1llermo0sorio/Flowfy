@@ -11,6 +11,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  BarChart2,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { to: '/transactions', icon: ArrowLeftRight, label: 'Movimientos' },
   { to: '/budgets', icon: PiggyBank, label: 'Presupuestos' },
   { to: '/goals', icon: Target, label: 'Metas' },
+  { to: '/reports', icon: BarChart2, label: 'Reportes' },
   { to: '/family', icon: Users, label: 'Familia' },
   { to: '/profile', icon: User, label: 'Perfil' },
   { to: '/notifications', icon: Bell, label: 'Avisos' },

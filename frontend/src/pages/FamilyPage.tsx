@@ -3,9 +3,13 @@ import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { UserPlus, Copy, Trash2, X, CheckCircle, Loader2, Link2 } from 'lucide-react';
 import { useFamily, useFamilyMembers, useLeaderboard, useUpdateFamilySettings, useUpdateProfile } from '../hooks/useFamily';
 import { useAuthStore } from '../stores/authStore';
 import { formatXP, getLevelInfo } from '../lib/formatters';
+import { apiClient } from '../lib/apiClient';
+import { useUIStore } from '../stores/uiStore';
 
 /* ─── Avatar ──────────────────────────────────────────────── */
 function Avatar({ name, avatar, size = 'md' }: { name: string; avatar?: string; size?: 'sm' | 'md' | 'lg' }) {
@@ -102,10 +106,141 @@ function Leaderboard({ entries }: { entries: LeaderEntry[] }) {
 const profileSchema = z.object({ name: z.string().min(1) });
 type ProfileData = z.infer<typeof profileSchema>;
 
+/* ─── Invite Modal ────────────────────────────────────────── */
+interface Invitation { token: string; email: string | null; expiresAt: string; link?: string }
+
+function InviteModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const addToast = useUIStore((s) => s.addToast);
+  const [email, setEmail] = useState('');
+  const [generated, setGenerated] = useState<{ link: string; expiresAt: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const createInvite = useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post<{ success: boolean; data: { token: string; link: string; expiresAt: string } }>(
+        '/family/invite', { email: email.trim() || undefined }
+      );
+      return data.data;
+    },
+    onSuccess: (d) => {
+      setGenerated(d);
+      qc.invalidateQueries({ queryKey: ['family-invitations'] });
+    },
+    onError: (e: { response?: { data?: { message?: string } } }) => {
+      addToast({ type: 'error', message: e.response?.data?.message ?? 'Error al generar invitación' });
+    },
+  });
+
+  const copyLink = async () => {
+    if (!generated) return;
+    await navigator.clipboard.writeText(generated.link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="card w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-surface-50">Invitar miembro</h2>
+          <button onClick={onClose} className="p-1 rounded-lg text-surface-400 hover:text-surface-200"><X className="w-4 h-4" /></button>
+        </div>
+
+        {!generated ? (
+          <>
+            <div>
+              <label className="text-xs text-surface-400 mb-1 block">Email (opcional)</label>
+              <input value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="invitado@email.com" className="input w-full text-sm" />
+              <p className="text-xs text-surface-500 mt-1">Si dejás vacío, el link sirve para cualquiera.</p>
+            </div>
+            <button onClick={() => createInvite.mutate()} disabled={createInvite.isPending}
+              className="btn-primary w-full py-2 flex items-center justify-center gap-1.5">
+              {createInvite.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+              Generar link de invitación
+            </button>
+          </>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 bg-positive-500/10 border border-positive-500/20 rounded-xl p-3">
+              <CheckCircle className="w-5 h-5 text-positive-400 flex-shrink-0" />
+              <p className="text-sm text-positive-300">Link generado exitosamente</p>
+            </div>
+            <div>
+              <label className="text-xs text-surface-400 mb-1 block">Link de invitación</label>
+              <div className="flex gap-2">
+                <input readOnly value={generated.link}
+                  className="input flex-1 text-xs text-surface-400 cursor-text" />
+                <button onClick={copyLink}
+                  className={`px-3 py-1.5 rounded-xl text-xs transition-colors flex-shrink-0 ${copied ? 'bg-positive-600 text-white' : 'bg-surface-700 hover:bg-surface-600 text-surface-300'}`}>
+                  {copied ? '✓ Copiado' : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-surface-500 mt-1">Expira: {new Date(generated.expiresAt).toLocaleDateString('es-UY')}</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setGenerated(null); setEmail(''); }} className="btn-secondary flex-1 py-1.5 text-sm">Nuevo link</button>
+              <button onClick={onClose} className="btn-primary flex-1 py-1.5 text-sm">Listo</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Active Invitations ──────────────────────────────────── */
+function ActiveInvitations() {
+  const qc = useQueryClient();
+  const addToast = useUIStore((s) => s.addToast);
+
+  const { data: invitations = [], isLoading } = useQuery<Invitation[]>({
+    queryKey: ['family-invitations'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ success: boolean; data: Invitation[] }>('/family/invitations');
+      return data.data;
+    },
+  });
+
+  const revoke = useMutation({
+    mutationFn: async (token: string) => { await apiClient.delete(`/family/invitations/${token}`); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['family-invitations'] }); addToast({ type: 'success', message: 'Invitación revocada' }); },
+  });
+
+  if (isLoading) return <div className="h-10 skeleton rounded-xl" />;
+  if (invitations.length === 0) return null;
+
+  return (
+    <div className="card p-5">
+      <h3 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
+        <Link2 className="w-4 h-4 text-primary-400" /> Invitaciones activas
+      </h3>
+      <div className="space-y-2">
+        {invitations.map((inv) => (
+          <div key={inv.token} className="flex items-center justify-between p-2.5 bg-surface-800 rounded-xl">
+            <div>
+              <p className="text-sm text-surface-200">{inv.email ?? 'Cualquiera con el link'}</p>
+              <p className="text-xs text-surface-500">Expira: {new Date(inv.expiresAt).toLocaleDateString('es-UY')}</p>
+            </div>
+            <button onClick={() => revoke.mutate(inv.token)} disabled={revoke.isPending}
+              className="p-1.5 rounded-lg text-surface-400 hover:text-danger-400 hover:bg-danger-500/10 transition-colors">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+
 /* ─── Page ────────────────────────────────────────────────── */
 export default function FamilyPage() {
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   const { data: family, isLoading: loadingFamily } = useFamily();
   const { data: members = [], isLoading: loadingMembers } = useFamilyMembers();
@@ -131,9 +266,18 @@ export default function FamilyPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Familia</h1>
-        <p className="text-surface-400 text-sm">Gestión del grupo familiar y estadísticas</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Familia</h1>
+          <p className="text-surface-400 text-sm">Gestión del grupo familiar y estadísticas</p>
+        </div>
+        {user?.role === 'owner' && (
+          <button onClick={() => setShowInviteModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 btn-primary text-sm">
+            <UserPlus className="w-4 h-4" />
+            <span className="hidden sm:inline">Invitar</span>
+          </button>
+        )}
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -225,6 +369,12 @@ export default function FamilyPage() {
 
       {/* Leaderboard */}
       {leaderboard.length > 0 && <Leaderboard entries={leaderboard as LeaderEntry[]} />}
+
+      {/* Active invitations */}
+      {user?.role === 'owner' && <ActiveInvitations />}
+
+      {/* Invite modal */}
+      {showInviteModal && <InviteModal onClose={() => setShowInviteModal(false)} />}
     </div>
   );
 }

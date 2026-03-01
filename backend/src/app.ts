@@ -15,6 +15,9 @@ import { gamificationRouter } from './routes/gamification.routes';
 import { notificationRouter } from './routes/notifications.routes';
 import { exchangeRateRouter } from './routes/exchangeRate.routes';
 import { adminRouter } from './routes/admin.routes';
+import { reportsRouter } from './routes/reports.routes';
+import { recurringRouter } from './routes/recurring.routes';
+import { importRouter } from './routes/import.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { authLimiter, generalLimiter } from './middleware/rateLimit';
 
@@ -53,6 +56,9 @@ app.use('/api/gamification', gamificationRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/exchange-rates', exchangeRateRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/reports', reportsRouter);
+app.use('/api/recurring', recurringRouter);
+app.use('/api/import', importRouter);
 app.use('/uploads', express.static('uploads', { maxAge: '7d' }));
 
 // ── Error handler (must be last) ───────────────────────────────────────────────
