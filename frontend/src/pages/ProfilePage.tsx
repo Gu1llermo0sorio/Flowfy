@@ -123,7 +123,7 @@ function ClearDataModal({ onClose, onConfirm, loading }: {
               type="text"
               value={typed}
               onChange={(e) => setTyped(e.target.value.toUpperCase())}
-              className="input-field w-full text-center font-mono tracking-widest"
+              className="input w-full text-center font-mono tracking-widest text-danger-400"
               placeholder={CONFIRM_WORD}
               autoFocus
             />

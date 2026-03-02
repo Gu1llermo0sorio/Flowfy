@@ -41,9 +41,10 @@ export default function TopNav() {
   const profileRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
 
-  // Cerrar menú al navegar
+  // Cerrar ambos menús al navegar
   useEffect(() => {
     setMobileMenuOpen(false);
+    setProfileOpen(false);
   }, [location.pathname]);
 
   const level = user?.level ?? 1;
@@ -53,15 +54,13 @@ export default function TopNav() {
 
   const isAdmin = user?.role === 'ADMIN';
 
-  // Cerrar dropdown al hacer click afuera
+  // Cerrar dropdown con Escape
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setProfileOpen(false);
-      }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setProfileOpen(false);
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleLogout = async () => {
@@ -155,7 +154,15 @@ export default function TopNav() {
         </button>
 
         {/* Profile dropdown */}
-        <div ref={profileRef} className="relative">
+        {/* Backdrop: closes dropdown when clicking anywhere outside */}
+        {profileOpen && (
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setProfileOpen(false)}
+            aria-hidden
+          />
+        )}
+        <div ref={profileRef} className="relative z-50">
           <button
             onClick={() => setProfileOpen((v) => !v)}
             className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-surface-700 transition-colors"
@@ -186,7 +193,7 @@ export default function TopNav() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.96 }}
                 transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="absolute right-0 top-full mt-2 w-56 bg-surface-800 border border-surface-700 rounded-xl shadow-2xl overflow-hidden z-50"
+                className="absolute right-0 top-full mt-2 w-56 bg-surface-800 border border-surface-700 rounded-xl shadow-2xl overflow-hidden z-50 pointer-events-auto"
               >
                 {/* User info */}
                 <div className="px-4 py-3 border-b border-surface-700">
