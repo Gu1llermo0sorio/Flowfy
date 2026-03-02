@@ -217,6 +217,39 @@ const DEFAULT_CATEGORIES = [
   },
 ];
 
+// ── New categories to lazily add for existing families ──────────────────────
+const ENSURE_CATEGORIES: typeof DEFAULT_CATEGORIES = [
+  {
+    name: 'Personal Care',
+    nameEs: 'Cuidado Personal',
+    icon: '💅',
+    color: '#F472B6',
+    sortOrder: 16,
+    subcategories: [
+      { name: 'Haircut', nameEs: 'Peluquería', icon: '💇' },
+      { name: 'Beauty', nameEs: 'Belleza', icon: '💄' },
+      { name: 'Pharmacy', nameEs: 'Farmacia', icon: '💊' },
+      { name: 'Spa', nameEs: 'Spa / Masajes', icon: '🧖' },
+      { name: 'Nails', nameEs: 'Manicura / Pedicura', icon: '💅' },
+    ],
+  },
+];
+
+async function ensureNewDefaults(familyId: string): Promise<void> {
+  for (const cat of ENSURE_CATEGORIES) {
+    const exists = await prisma.category.findFirst({ where: { familyId, nameEs: cat.nameEs } });
+    if (!exists) {
+      const { subcategories, ...catData } = cat;
+      const created = await prisma.category.create({ data: { ...catData, familyId, isCustom: false } });
+      if (subcategories.length) {
+        await prisma.subcategory.createMany({
+          data: subcategories.map((sub, idx) => ({ ...sub, categoryId: created.id, sortOrder: idx })),
+        });
+      }
+    }
+  }
+}
+
 /**
  * Seeds the default categories and subcategories for a newly created family.
  * Only creates system-level categories (familyId = null) once, then links.
@@ -250,8 +283,10 @@ export async function seedDefaultCategories(familyId: string): Promise<void> {
 
 /**
  * Returns all categories (with subcategories) for a family.
+ * Lazily creates any new default categories that weren't in the original seed.
  */
 export async function getCategoriesForFamily(familyId: string) {
+  await ensureNewDefaults(familyId);
   return prisma.category.findMany({
     where: {
       OR: [{ familyId }, { familyId: null, isCustom: false }],

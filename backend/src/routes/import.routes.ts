@@ -214,7 +214,8 @@ interface ParsedTx {
 const MERCHANT_CATEGORY_HINTS: Array<{ pattern: RegExp; nameEs: string }> = [
   { pattern: /disco\b|devoto|tienda\s*inglesa|g[eé]ant|tata\b|multiahorro|fresh\s*market|carestino|super\s*mercado/i, nameEs: 'Comida y Restaurantes' },
   { pattern: /pedidosya|rappi|pizza\s*hut|mcdonald|burger|subway|kfc/i, nameEs: 'Comida y Restaurantes' },
-  { pattern: /farmashop|farmacity/i, nameEs: 'Ropa y Personal' },
+  { pattern: /farmashop|farmacity|farma\b/i, nameEs: 'Cuidado Personal' },
+  { pattern: /peluquer[ií]a|barber[ií]a|spa\b|manicur|pedicur|est[eé]tica/i, nameEs: 'Cuidado Personal' },
   { pattern: /\buber\b|cabify/i, nameEs: 'Transporte' },
   { pattern: /ancap|shell|petrobr[aá]s|axion\b/i, nameEs: 'Transporte' },
   { pattern: /netflix|spotify|youtube\s*premium|disney[+\s]|hbo\b|prime\s*video|apple\s*tv|paramount|deezer|twitch/i, nameEs: 'Entretenimiento' },
@@ -222,7 +223,15 @@ const MERCHANT_CATEGORY_HINTS: Array<{ pattern: RegExp; nameEs: string }> = [
   { pattern: /veterinaria/i, nameEs: 'Mascotas' },
   { pattern: /zara\b|h\s*[&y]\s*m\b|carter[\s']|lojas\s*renner|renner\b|metraje|divino\b|bas\s+basic|parisien|mango\b|bershka/i, nameEs: 'Ropa y Personal' },
   { pattern: /antel|ost\b|ute\b|internet|vodafone|claro\b|movistar/i, nameEs: 'Hogar y Vivienda' },
+  { pattern: /recargo|inter[eé]s|cargo\s+financ|cargo\s+admin|comisi[oó]n|iva\s+s\//i, nameEs: 'Finanzas' },
 ];
+
+/** Normalize description for merchant learning: lowercase, trim, strip trailing random codes */
+function normalizeDesc(desc: string): string {
+  return desc.toLowerCase().trim()
+    .replace(/\s+[A-Z0-9]{6,}\s*$/i, '')  // strip trailing codes like "P313C6CBB9"
+    .replace(/\s+/g, ' ');
+}
 
 function guessMerchantCategory(description: string): string | null {
   for (const { pattern, nameEs } of MERCHANT_CATEGORY_HINTS) {
@@ -354,6 +363,31 @@ function parseOCAStatement(text: string): ParsedTx[] {
     });
   }
 
+  // ── Secondary pass: recargos, intereses y cargos sin fecha ──────────────────
+  // These appear as floating lines in OCA statements without the DD/MM date prefix
+  const chargeRegex = /^\s{2,}((?:RECARGO|INTER[EÉ]S|CARGO\s+(?:FINANC|ADMIN|SERVIC)|COMISI[OÓ]N|IVA\s+S\/)[\w\s.,()/-]{0,60}?)\s{3,}([\d.,]+)\s*$/i;
+  const statementDateStr = `${year}-${String(defaultMonth).padStart(2, '0')}-01`;
+  for (const line of lines) {
+    const mc = chargeRegex.exec(line);
+    if (!mc) continue;
+    const chargeDesc = mc[1].trim().replace(/\s+/g, ' ');
+    const chargeAmount = parseMonto(mc[2]);
+    if (chargeAmount <= 0 || chargeAmount > 50_000_000) continue; // skip impossible values
+    results.push({
+      date: statementDateStr,
+      description: chargeDesc,
+      amount: chargeAmount,
+      currency: 'UYU',
+      type: 'expense',
+      installmentCurrent: null,
+      installmentTotal: null,
+      institution,
+      keep: true,
+      categoryHint: 'Finanzas',
+      categoryId: null,
+    });
+  }
+
   return results;
 }
 
@@ -389,17 +423,35 @@ importRouter.post('/pdf-preview', pdfUpload.single('file'), async (req: AuthRequ
     const regexRows = parseOCAStatement(text);
     const statementTotal = extractStatementTotal(text);
 
-    // Resolve categoryHint → categoryId using the user's categories in DB
-    const userCategories = await prisma.category.findMany({
-      where: { familyId: req.familyId! },
-      select: { id: true, nameEs: true },
+    // Resolve categories: 1) learned from past transactions, 2) keyword hint, 3) null
+    const [userCategories, learnedTxs] = await Promise.all([
+      prisma.category.findMany({ where: { familyId: req.familyId! }, select: { id: true, nameEs: true } }),
+      prisma.transaction.findMany({
+        where: { familyId: req.familyId! },
+        select: { description: true, categoryId: true },
+        orderBy: { date: 'asc' }, // oldest first → newest overwrites
+        take: 2000,
+      }),
+    ]);
+
+    // Build learned map: normalized description → categoryId
+    const learnedMap = new Map<string, string>();
+    for (const tx of learnedTxs) {
+      const key = normalizeDesc(tx.description);
+      if (key.length >= 3) learnedMap.set(key, tx.categoryId);
+    }
+
+    const resolvedRows = regexRows.map((row) => {
+      // 1. Learning takes priority (user already classified this merchant before)
+      const descKey = normalizeDesc(row.description);
+      const learnedId = learnedMap.get(descKey);
+      if (learnedId) return { ...row, categoryId: learnedId };
+      // 2. Static keyword hint
+      const hintId = row.categoryHint
+        ? (userCategories.find((c) => c.nameEs === row.categoryHint)?.id ?? null)
+        : null;
+      return { ...row, categoryId: hintId };
     });
-    const resolvedRows = regexRows.map((row) => ({
-      ...row,
-      categoryId: row.categoryHint
-        ? (userCategories.find((c: { id: string; nameEs: string }) => c.nameEs === row.categoryHint)?.id ?? null)
-        : null,
-    }));
 
     // If regex found enough transactions, use them; otherwise try AI
     if (resolvedRows.length >= 3 || !process.env.ANTHROPIC_API_KEY) {
@@ -518,6 +570,7 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
         installmentCurrent?: number | null;
         installmentTotal?: number | null;
         institution?: string;
+        isRecurring?: boolean;
       }>;
       defaultCategoryId: string;
     };
@@ -563,6 +616,7 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
             importBatchId,
             institutionId: r.institution ?? null,
             paymentMethod: 'credit',
+            isRecurring: r.isRecurring ?? false,
             isOcaInstallment: (r.installmentTotal ?? 0) > 1,
             ocaCurrentInstallment: r.installmentCurrent ?? null,
             ocaTotalInstallments: r.installmentTotal ?? null,

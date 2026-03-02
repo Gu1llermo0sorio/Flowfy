@@ -36,6 +36,7 @@ interface PdfRow {
   categoryId: string;       // '' = use default
   categoryHint: string | null; // nameEs of auto-detected category
   possibleDuplicate?: boolean; // true = ya existe una tx similar en la BD
+  isRecurring?: boolean;    // marcar como recurrente
 }
 
 interface PdfPreviewResult {
@@ -150,6 +151,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
         keep: !r.possibleDuplicate,   // duplicados empiezan deseleccionados
         categoryId: r.categoryId ?? '',
         categoryHint: r.categoryHint ?? null,
+        isRecurring: false,
       })));
       setStep(1);
     } catch (e: unknown) {
@@ -170,7 +172,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
     setLoading(true);
     try {
       const { data } = await apiClient.post<{ success: boolean; data: { imported: number; skipped: number; batchId: string } }>('/import/pdf-confirm', {
-        rows: rowsToImport,
+        rows: rowsToImport.map((r) => ({ ...r, isRecurring: r.isRecurring ?? false })),
         defaultCategoryId: defaultCategoryId || undefined,
       });
       setImportBatchId(data.data.batchId ?? null);
@@ -523,8 +525,9 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                       <th className="w-8 px-2 py-2"></th>
                       <th className="text-left px-2 py-2 text-surface-400 font-medium">Fecha</th>
                       <th className="text-left px-2 py-2 text-surface-400 font-medium">Descripción</th>
-                      <th className="text-left px-2 py-2 text-surface-400 font-medium">Cuotas</th>
+                      <th className="text-left px-2 py-2 text-surface-400 font-medium" title="Cuotas">Cuotas</th>
                       <th className="text-left px-2 py-2 text-surface-400 font-medium">Categoría</th>
+                      <th className="px-2 py-2 text-surface-400 font-medium text-center" title="Pago recurrente">↺</th>
                       <th className="text-right px-2 py-2 text-surface-400 font-medium">Monto</th>
                     </tr>
                   </thead>
@@ -544,7 +547,11 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                           <span className={row.possibleDuplicate ? 'text-warning-300' : 'text-surface-200'}>{row.description}</span>
                         </td>
                         <td className="px-2 py-1.5 text-surface-500 whitespace-nowrap">
-                          {row.installmentTotal ? `${row.installmentCurrent}/${row.installmentTotal}` : '—'}
+                          {row.installmentTotal
+                            ? <span title={`Cuota ${row.installmentCurrent} de ${row.installmentTotal} · total est. ${((row.amount / 100) * row.installmentTotal).toLocaleString('es-UY', { maximumFractionDigits: 0 })}`}>
+                                {row.installmentCurrent}/{row.installmentTotal}
+                              </span>
+                            : '—'}
                         </td>
                         <td className="px-2 py-1.5">
                           <select
@@ -557,6 +564,20 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                               <option key={c.id} value={c.id}>{c.icon} {c.nameEs}</option>
                             ))}
                           </select>
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          <button
+                            type="button"
+                            title={row.isRecurring ? 'Recurrente (click para quitar)' : 'Marcar como recurrente'}
+                            onClick={() => setPdfRows((prev) => prev.map((r, idx) => idx === i ? { ...r, isRecurring: !r.isRecurring } : r))}
+                            className={`text-xs px-1 py-0.5 rounded transition-colors ${
+                              row.isRecurring
+                                ? 'text-primary-400 bg-primary-500/15 hover:bg-primary-500/25'
+                                : 'text-surface-600 hover:text-surface-400'
+                            }`}
+                          >
+                            ↺
+                          </button>
                         </td>
                         <td className="px-2 py-1.5 text-right font-mono whitespace-nowrap">
                           <span className={row.currency === 'USD' ? 'text-amber-400' : 'text-surface-200'}>
