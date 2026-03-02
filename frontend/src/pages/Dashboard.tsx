@@ -157,10 +157,10 @@ export default function Dashboard() {
                       'Gasto',
                     ]}
                     contentStyle={{
-                      background: '#1e293b',
-                      border: '1px solid #334155',
+                      background: 'var(--s800)',
+                      border: '1px solid var(--s700)',
                       borderRadius: '8px',
-                      color: '#f1f5f9',
+                      color: 'var(--text-main)',
                       fontSize: '12px',
                     }}
                   />
@@ -273,7 +273,7 @@ export default function Dashboard() {
           </div>
           <div className="progress-bar h-2.5">
             <div
-              className="progress-bar-fill"
+              className="progress-fill bg-gradient-to-r from-primary-500 to-accent-500"
               style={{
                 width: `${Math.min((user.xp / user.nextLevelXp) * 100, 100)}%`,
               }}

@@ -23,18 +23,18 @@
 
 /* Light mode overrides when html does NOT have .dark class */
 html:not(.dark) {
-  --s50:  #0f172a;
-  --s100: #1e293b;
-  --s200: #334155;
-  --s300: #475569;
-  --s400: #64748b;
-  --s500: #94a3b8;
-  --s600: #cbd5e1;
-  --s700: #e2e8f0;
-  --s800: #f1f5f9;
-  --s900: #ffffff;
-  --s950: #f8fafc;
-  --text-main: #0f172a;
+  --s50:  #0d1829;   /* headings, strongest text */
+  --s100: #1e2e45;   /* primary text */
+  --s200: #2f4464;   /* secondary text */
+  --s300: #4a6080;   /* tertiary / icon fill */
+  --s400: #6b82a0;   /* muted text, placeholders */
+  --s500: #96adc5;   /* very muted / disabled */
+  --s600: #c3d0de;   /* dividers / subtle borders */
+  --s700: #dde6f0;   /* icon containers, hover bg */
+  --s800: #ffffff;   /* card / popover / nav backgrounds */
+  --s900: #edf1f7;   /* page background */
+  --s950: #f4f7fb;   /* inner section bg */
+  --text-main: #0d1829;
 }
 /* ── CSS Variables ──────────────────────────────────────── */
 :root {
@@ -208,6 +208,30 @@ html:not(.dark) {
   /* Adaptive main text - respects surface color variable */
   .text-main { color: var(--text-main); }
   .text-surface-adaptive { color: var(--s400); }
+}
+
+/* ── Light mode: card & nav elevation ─────────────────────── */
+@layer components {
+  html:not(.dark) .card {
+    box-shadow: 0 1px 3px rgba(30,60,110,0.07), 0 4px 16px rgba(30,60,110,0.05);
+    border: 1px solid var(--s700);
+  }
+
+  /* TopNav gets a clean shadow instead of a border in light mode */
+  html:not(.dark) header {
+    box-shadow: 0 1px 0 var(--s600), 0 2px 8px rgba(30,60,110,0.06);
+  }
+
+  /* Icon containers and hover areas need a slightly tinted bg */
+  html:not(.dark) .bg-surface-700 {
+    background-color: var(--s700);
+  }
+  html:not(.dark) .bg-surface-800 {
+    background-color: var(--s800);
+  }
+  html:not(.dark) .bg-surface-900 {
+    background-color: var(--s900);
+  }
 }
 
 /* ── Light mode: comprehensive text-white fix ──────────────── */
