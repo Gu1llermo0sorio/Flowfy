@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -111,6 +112,32 @@ export default function TransactionModal({ transaction, onClose }: Props) {
   const [multiItems, setMultiItems] = useState<MultiItem[]>([]);
   const [savingMulti, setSavingMulti] = useState(false);
 
+  // Subcategory inline creation
+  const qc = useQueryClient();
+  const [showNewSubcat, setShowNewSubcat] = useState(false);
+  const [newSubcatName, setNewSubcatName] = useState('');
+  const [savingSubcat, setSavingSubcat] = useState(false);
+
+  const handleCreateSubcat = async () => {
+    if (!newSubcatName.trim() || !selectedCategoryId) return;
+    setSavingSubcat(true);
+    try {
+      const { data } = await apiClient.post(`/categories/${selectedCategoryId}/subcategories`, {
+        name: newSubcatName.trim(),
+        nameEs: newSubcatName.trim(),
+      });
+      qc.invalidateQueries({ queryKey: ['categories'] });
+      setValue('subcategoryId', data.data.id);
+      setNewSubcatName('');
+      setShowNewSubcat(false);
+      addToast({ type: 'success', message: `Subcategoría "${newSubcatName.trim()}" creada` });
+    } catch {
+      addToast({ type: 'error', message: 'No se pudo crear la subcategoría' });
+    } finally {
+      setSavingSubcat(false);
+    }
+  };
+
   // Budget impact: get current month budgets to show impact preview
   const now = new Date();
   const { data: currentBudgets = [] } = useBudgets(now.getMonth() + 1, now.getFullYear());
@@ -153,6 +180,8 @@ export default function TransactionModal({ transaction, onClose }: Props) {
   // Reset subcategory when category changes
   useEffect(() => {
     reset((prev) => ({ ...prev, subcategoryId: '' }));
+    setShowNewSubcat(false);
+    setNewSubcatName('');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategoryId]);
 
@@ -230,12 +259,17 @@ export default function TransactionModal({ transaction, onClose }: Props) {
     }
   };
 
-  // Match categoryHint to an actual category id
+  // Match categoryHint to an actual category id (case-insensitive)
   const matchCategoryId = (hint: string | null): string | null => {
     if (!hint || !categories.length) return null;
-    const keywords = HINT_KEYWORDS[hint] ?? [hint];
+    const hintLower = hint.toLowerCase();
+    const keywords = HINT_KEYWORDS[hintLower] ?? [hintLower];
+    // First try matching by nameEs (Spanish), then by name
     const found = categories.find((c) =>
-      keywords.some((kw) => c.name.toLowerCase().includes(kw))
+      keywords.some((kw) =>
+        (c.nameEs ?? c.name).toLowerCase().includes(kw) ||
+        c.name.toLowerCase().includes(kw)
+      )
     );
     return found?.id ?? null;
   };
@@ -435,12 +469,17 @@ export default function TransactionModal({ transaction, onClose }: Props) {
                             <span className="font-medium text-surface-100">{aiResult.date}</span>
                           </div>
                         )}
-                        {aiResult.categoryHint && (
-                          <div className="col-span-2 flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-surface-700">
-                            <span className="text-surface-400">Categoría</span>
-                            <span className="font-medium text-surface-100 capitalize">{aiResult.categoryHint}</span>
-                          </div>
-                        )}
+                        {aiResult.categoryHint && (() => {
+                          const cat = categories.find(c => c.id === matchCategoryId(aiResult.categoryHint));
+                          return (
+                            <div className="col-span-2 flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-surface-700">
+                              <span className="text-surface-400">Categoría</span>
+                              <span className="font-medium text-surface-100">
+                                {cat ? `${cat.icon ?? ''} ${cat.nameEs ?? cat.name}`.trim() : aiResult.categoryHint}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="flex flex-col gap-2">
                         <button
@@ -818,20 +857,60 @@ export default function TransactionModal({ transaction, onClose }: Props) {
                 </div>
 
                 {/* Subcategoría */}
-                {subcategories.length > 0 && (
-                  <div>
-                    <label className="block text-xs font-medium text-surface-400 mb-1.5">Subcategoría</label>
-                    <select
-                      {...register('subcategoryId')}
-                      className="w-full bg-surface-900 border border-surface-700 rounded-xl px-3 py-2.5 text-sm text-surface-50 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/50 transition-all"
-                    >
-                      <option value="">Sin subcategoría</option>
-                      {subcategories.map((sub) => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.icon && `${sub.icon} `}{sub.nameEs}
-                        </option>
-                      ))}
-                    </select>
+                {selectedCategoryId && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-medium text-surface-400">Subcategoría</label>
+                      {!showNewSubcat && (
+                        <button
+                          type="button"
+                          onClick={() => setShowNewSubcat(true)}
+                          className="text-xs text-primary-400 hover:text-primary-300 transition-colors"
+                        >
+                          + Nueva subcategoría
+                        </button>
+                      )}
+                    </div>
+                    {!showNewSubcat ? (
+                      <select
+                        {...register('subcategoryId')}
+                        className="w-full bg-surface-900 border border-surface-700 rounded-xl px-3 py-2.5 text-sm text-surface-50 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/50 transition-all"
+                      >
+                        <option value="">Sin subcategoría</option>
+                        {subcategories.map((sub) => (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.icon && `${sub.icon} `}{sub.nameEs ?? sub.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={newSubcatName}
+                          onChange={(e) => setNewSubcatName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateSubcat(); } if (e.key === 'Escape') setShowNewSubcat(false); }}
+                          placeholder="Nombre de la subcategoría"
+                          className="flex-1 bg-surface-900 border border-primary-500/50 rounded-xl px-3 py-2 text-sm text-surface-50 placeholder-surface-600 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCreateSubcat}
+                          disabled={!newSubcatName.trim() || savingSubcat}
+                          className="px-3 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-40 text-white text-xs font-semibold transition-colors flex-shrink-0"
+                        >
+                          {savingSubcat ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Guardar'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowNewSubcat(false); setNewSubcatName(''); }}
+                          className="px-3 py-2 rounded-xl border border-surface-600 text-surface-400 hover:text-white text-xs transition-colors flex-shrink-0"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

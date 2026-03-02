@@ -424,18 +424,28 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
               {/* Statement total validation */}
               {pdfPreview.statementTotal && (
                 (() => {
-                  const importedTotal = pdfRows.filter((r) => r.keep && r.currency === 'UYU').reduce((s, r) => s + r.amount, 0);
-                  const diff = Math.abs(importedTotal - pdfPreview.statementTotal);
-                  const pct = pdfPreview.statementTotal > 0 ? diff / pdfPreview.statementTotal : 0;
-                  const isClose = pct < 0.15;
+                  const uyuTotal   = pdfRows.filter((r) => r.keep && r.currency !== 'USD').reduce((s, r) => s + r.amount, 0);
+                  const usdTotal   = pdfRows.filter((r) => r.keep && r.currency === 'USD').reduce((s, r) => s + r.amount, 0);
+                  const diff       = Math.abs(uyuTotal - pdfPreview.statementTotal);
+                  const pct        = pdfPreview.statementTotal > 0 ? diff / pdfPreview.statementTotal : 0;
+                  const isClose    = pct < 0.15;
                   return (
-                    <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${isClose ? 'bg-positive-500/10 text-positive-400' : 'bg-warning-500/10 text-warning-400'}`}>
-                      <span className="font-medium">Total documento:</span>
-                      <span>{formatCurrency(pdfPreview.statementTotal)}</span>
-                      <span className="text-surface-500">·</span>
-                      <span className="font-medium">Suma seleccionadas:</span>
-                      <span>{formatCurrency(importedTotal)}</span>
-                      {!isClose && <span className="ml-1 opacity-70">(diferencia incluye cuotas de meses anteriores)</span>}
+                    <div className={`text-xs px-3 py-2 rounded-lg space-y-0.5 ${isClose ? 'bg-positive-500/10 text-positive-400' : 'bg-surface-700/60 text-surface-300'}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium">Total documento:</span>
+                        <span className="font-mono">{formatCurrency(pdfPreview.statementTotal)}</span>
+                        <span className="text-surface-500">·</span>
+                        <span className="font-medium">Seleccionadas:</span>
+                        <span className="font-mono">{formatCurrency(uyuTotal)}</span>
+                        {usdTotal > 0 && (
+                          <span className="font-mono text-amber-400">+ U$S {(usdTotal / 100).toFixed(2)}</span>
+                        )}
+                      </div>
+                      {!isClose && (
+                        <p className="text-surface-500 text-[11px]">
+                          La diferencia es normal: el PDF incluye intereses, cargos y cuotas de meses anteriores que no aparecen como filas individuales.
+                        </p>
+                      )}
                     </div>
                   );
                 })()
