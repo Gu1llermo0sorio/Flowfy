@@ -90,30 +90,30 @@ export default function TopNav() {
               to={to}
               end={!!exact}
               className={({ isActive }) =>
-                `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-primary-500/15 text-primary-400'
-                    : 'text-surface-400 hover:text-surface-50 hover:bg-surface-700'
+                `nav-btn flex items-center px-3 py-1.5 text-sm font-medium ${
+                  isActive ? 'nav-btn--active' : 'text-surface-400'
                 }`
               }
             >
-              <Icon className="w-4 h-4" />
-              {label}
+              <span className="relative z-[2] flex items-center gap-1.5">
+                <Icon className="w-4 h-4" />
+                {label}
+              </span>
             </NavLink>
           ))}
           {isAdmin && (
             <NavLink
               to="/admin"
               className={({ isActive }) =>
-                `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-amber-500/15 text-amber-400'
-                    : 'text-surface-400 hover:text-surface-50 hover:bg-surface-700'
+                `nav-btn flex items-center px-3 py-1.5 text-sm font-medium ${
+                  isActive ? 'nav-btn--active' : 'text-surface-400'
                 }`
               }
             >
-              <Shield className="w-4 h-4" />
-              Admin
+              <span className="relative z-[2] flex items-center gap-1.5">
+                <Shield className="w-4 h-4" />
+                Admin
+              </span>
             </NavLink>
           )}
         </nav>

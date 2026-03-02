@@ -689,3 +689,54 @@ html:not(.dark) {
   border-color: #10b981;
 }
 .radio-tile--income .radio-tile-input:checked + .radio-tile .radio-tile__label { color: #34d399; }
+
+/* ── Nav border-reveal buttons ──────────────────────────────────────
+   Los ::before/::after usan var(--s800) para enmascarar el borde
+   superior e inferior. Al hacer hover escalan a 0 revelando el
+   borde completo + glow. var(--s800) cambia solo con el tema,
+   así que dark/light mode funciona automáticamente.
+────────────────────────────────────────────────────────── */
+.nav-btn {
+  position: relative;
+  border: 1.5px solid #0d9488;
+  border-radius: 0.5rem;
+  transition: box-shadow 0.5s ease, color 0.3s ease;
+}
+.nav-btn::after,
+.nav-btn::before {
+  content: "";
+  position: absolute;
+  left: 6%;
+  width: 88%;
+  background-color: var(--s800);
+  transition: transform 0.4s ease;
+  transform-origin: center;
+  pointer-events: none;
+  z-index: 1;
+}
+.nav-btn::after {
+  top: -2px;
+  height: 44%;
+}
+.nav-btn::before {
+  top: 58%;
+  height: 44%;
+}
+.nav-btn:hover::before,
+.nav-btn:hover::after {
+  transform: scale(0);
+}
+.nav-btn:hover {
+  box-shadow: inset 0px 0px 14px rgba(13,148,136,0.4);
+  color: #2dd4bf;
+}
+/* Active — borde siempre visible + glow sutil */
+.nav-btn.nav-btn--active::before,
+.nav-btn.nav-btn--active::after {
+  transform: scale(0);
+}
+.nav-btn.nav-btn--active {
+  box-shadow: inset 0px 0px 12px rgba(13,148,136,0.28);
+  background-color: rgba(13,148,136,0.06);
+  color: #2dd4bf;
+}
