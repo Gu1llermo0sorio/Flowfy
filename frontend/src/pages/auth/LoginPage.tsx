@@ -100,7 +100,7 @@ export default function LoginPage() {
           </div>
 
           <h2 className="text-2xl font-bold text-white mb-2">Bienvenido de nuevo</h2>
-          <p className="text-surface-400 mb-8">Ingresá a tu cuenta familiar</p>
+          <p className="text-surface-400 mb-8">Ingresá a tu cuenta</p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {/* Server error */}
@@ -182,7 +182,7 @@ export default function LoginPage() {
               to="/register"
               className="text-primary-400 hover:text-primary-300 font-medium transition-colors"
             >
-              Crear cuenta familiar
+              Crear cuenta
             </Link>
           </p>
         </motion.div>

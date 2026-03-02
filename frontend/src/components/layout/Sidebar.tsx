@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { to: '/budgets', icon: PiggyBank, label: 'Presupuestos' },
   { to: '/goals', icon: Target, label: 'Metas' },
   { to: '/reports', icon: BarChart2, label: 'Reportes' },
-  { to: '/family', icon: Users, label: 'Familia' },
+  { to: '/family', icon: Users, label: 'Cuenta' },
   { to: '/profile', icon: User, label: 'Perfil' },
   { to: '/notifications', icon: Bell, label: 'Avisos' },
 ];

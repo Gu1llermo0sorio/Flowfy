@@ -19,13 +19,13 @@ const STEPS = [
     id: 'welcome',
     icon: <Sparkles className="w-8 h-8 text-primary-400" />,
     title: '¡Bienvenido/a a Flowfy!',
-    description: 'Tu app de finanzas familiares. En 3 pasos rápidos configuramos tu cuenta.',
+    description: 'Tu app de finanzas personales. En 3 pasos rápidos configuramos tu cuenta.',
   },
   {
     id: 'family',
     icon: <Users className="w-8 h-8 text-primary-400" />,
-    title: 'Nombre de tu familia',
-    description: 'Dale un nombre a tu grupo familiar para identificar las finanzas compartidas.',
+    title: 'Nombre de tu espacio',
+    description: 'Dale un nombre a tu espacio financiero. Puede ser tu nombre, tu hogar o lo que prefieras.',
   },
   {
     id: 'currency',
@@ -154,7 +154,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
             {/* Step inputs */}
             {stepIdx === 1 && (
               <div>
-                <label className="text-xs text-surface-400 mb-1.5 block">Nombre de la familia</label>
+                <label className="text-xs text-surface-400 mb-1.5 block">Nombre de tu espacio</label>
                 <input
                   value={state.familyName}
                   onChange={(e) => setState((s) => ({ ...s, familyName: e.target.value }))}
@@ -191,7 +191,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
             {stepIdx === 3 && (
               <div className="bg-positive-500/10 border border-positive-500/20 rounded-xl p-4 text-center">
                 <p className="text-sm text-positive-300">
-                  Tu familia <strong>"{state.familyName}"</strong> está configurada con <strong>{state.currency}</strong> como moneda.
+                  Tu espacio <strong>"{state.familyName}"</strong> está configurado con <strong>{state.currency}</strong> como moneda.
                 </p>
               </div>
             )}

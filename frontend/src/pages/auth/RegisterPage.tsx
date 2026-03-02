@@ -79,8 +79,8 @@ export default function RegisterPage() {
           </motion.div>
         </div>
 
-        <h2 className="text-2xl font-bold text-white mb-2">Crear cuenta familiar</h2>
-        <p className="text-surface-400 mb-8">Empezá a gestionar la plata de tu familia</p>
+        <h2 className="text-2xl font-bold text-white mb-2">Crear cuenta</h2>
+        <p className="text-surface-400 mb-8">Empezá a gestionar tus finanzas personales</p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {/* Server error */}
@@ -95,7 +95,7 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-surface-300 mb-1.5">
               <span className="flex items-center gap-1.5">
                 <Users className="w-4 h-4" />
-                Nombre de familia
+                Nombre de tu espacio
               </span>
             </label>
             <div className={`form-field-line ${errors.familyName ? 'has-error' : ''}`}>

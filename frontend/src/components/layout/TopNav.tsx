@@ -27,7 +27,7 @@ const NAV_LINKS = [
   { to: '/transactions', icon: ArrowLeftRight, label: 'Movimientos' },
   { to: '/budgets', icon: PiggyBank, label: 'Presupuestos' },
   { to: '/goals', icon: Target, label: 'Metas' },
-  { to: '/family', icon: Users, label: 'Familia' },
+  { to: '/family', icon: Users, label: 'Cuenta' },
 ];
 
 export default function TopNav() {

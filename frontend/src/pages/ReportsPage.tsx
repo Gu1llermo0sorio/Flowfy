@@ -100,7 +100,7 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-50">Reportes</h1>
-          <p className="text-sm text-surface-400 mt-0.5">Análisis financiero de tu familia</p>
+          <p className="text-sm text-surface-400 mt-0.5">Análisis de tus finanzas</p>
         </div>
         <select
           value={monthsBack}

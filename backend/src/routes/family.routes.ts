@@ -190,6 +190,37 @@ familyRouter.delete('/invitations/:token', async (req: AuthRequest, res, next) =
   }
 });
 
+// ── DELETE /api/family/data — wipe all financial data (owner only) ────────────
+familyRouter.delete('/data', async (req: AuthRequest, res, next) => {
+  try {
+    // Only owner can clear data
+    const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { role: true } });
+    if (user?.role !== 'owner') throw createError('Solo el propietario puede limpiar los datos', 403, 'FORBIDDEN');
+
+    const fid = req.familyId!;
+
+    // Delete everything financial — keep categories, users, family config, invitations
+    const [txDel, budDel, goalDel, chalDel, recDel] = await prisma.$transaction([
+      prisma.transaction.deleteMany({ where: { familyId: fid } }),
+      prisma.budget.deleteMany({ where: { familyId: fid } }),
+      prisma.goal.deleteMany({ where: { familyId: fid } }),
+      prisma.challenge.deleteMany({ where: { familyId: fid } }),
+      prisma.recommendation.deleteMany({ where: { familyId: fid } }),
+    ]);
+
+    // Reset XP + streaks for all members
+    await prisma.user.updateMany({
+      where: { familyId: fid },
+      data: { xp: 0, level: 1, streakDays: 0 },
+    });
+
+    const total = txDel.count + budDel.count + goalDel.count + chalDel.count + recDel.count;
+    res.json({ success: true, data: { deleted: total, transactions: txDel.count, budgets: budDel.count, goals: goalDel.count } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /api/family/join/:token — validate an invitation (no auth needed) ─────
 familyRouter.get('/join/:token', async (_req, res, next) => {
   try {

@@ -268,8 +268,8 @@ export default function FamilyPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Familia</h1>
-          <p className="text-surface-400 text-sm">Gestión del grupo familiar y estadísticas</p>
+          <h1 className="text-2xl font-bold text-white">Mi cuenta</h1>
+          <p className="text-surface-400 text-sm">Configuración, miembros y estadísticas</p>
         </div>
         {user?.role === 'owner' && (
           <button onClick={() => setShowInviteModal(true)}
@@ -316,13 +316,13 @@ export default function FamilyPage() {
 
         {/* Family info */}
         <div className="card p-5">
-          <h3 className="text-base font-semibold text-white mb-4">👨‍👩‍👦 Familia</h3>
+          <h3 className="text-base font-semibold text-white mb-4">� Configuración</h3>
           {loadingFamily ? (
             <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="h-10 rounded-lg bg-surface-700 animate-pulse" />)}</div>
           ) : (
             <>
               <EditableField
-                label="Nombre familia"
+                label="Nombre de la cuenta"
                 value={family?.name ?? ''}
                 onSave={saveFamilyName}
                 isLoading={updateFamily.isPending}
