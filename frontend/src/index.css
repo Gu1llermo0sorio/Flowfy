@@ -561,3 +561,131 @@ html:not(.dark) {
 .form-field-line:focus-within .input-line-border { width: 100%; }
 .form-field-line.has-error .input-line { border-bottom-color: #f43f5e; }
 .form-field-line.has-error .input-line-border { background: #f43f5e; }
+
+/* ── Radio tile selector ─────────────────────────────────────────────
+   Estructura: <label><input class="radio-tile-input" type="radio"><span class="radio-tile">...</span></label>
+   Modificadores:
+     .radio-tile--row     → icono + texto en fila (para metas, categorías)
+     .radio-tile--inline  → fila compacta centrada (para toggles de 2 opciones)
+     .radio-tile--expense / .radio-tile--income  → variante con color semántico
+─────────────────────────────────────────────────────────── */
+.radio-tile-input {
+  clip: rect(0 0 0 0);
+  clip-path: inset(100%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+.radio-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.75rem;
+  border: 2px solid var(--s600);
+  background-color: var(--s800);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.radio-tile::before {
+  content: "";
+  position: absolute;
+  display: block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 2px solid var(--s500);
+  background-color: var(--s800);
+  border-radius: 50%;
+  top: 0.35rem;
+  left: 0.35rem;
+  opacity: 0;
+  transform: scale(0);
+  transition: transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+.radio-tile:hover {
+  border-color: #0d9488;
+}
+.radio-tile:hover::before {
+  transform: scale(1);
+  opacity: 1;
+}
+/* ─ Checked: teal (default) ─ */
+.radio-tile-input:checked + .radio-tile {
+  border-color: #0d9488;
+  background-color: rgba(13,148,136,0.1);
+  box-shadow: 0 4px 14px rgba(13,148,136,0.18);
+  color: #2dd4bf;
+}
+.radio-tile-input:checked + .radio-tile::before {
+  transform: scale(1);
+  opacity: 1;
+  background-color: #0d9488;
+  border-color: #0d9488;
+}
+.radio-tile-input:focus + .radio-tile {
+  box-shadow: 0 0 0 3px rgba(13,148,136,0.25);
+}
+/* ─ Labels ─ */
+.radio-tile__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--s200);
+  transition: color 0.15s;
+  line-height: 1.2;
+}
+.radio-tile__desc {
+  font-size: 0.65rem;
+  color: var(--s400);
+  line-height: 1.35;
+  margin-top: 0.125rem;
+}
+.radio-tile-input:checked + .radio-tile .radio-tile__label { color: #2dd4bf; }
+/* ─ Row modifier (icon-left + text-right) ─ */
+.radio-tile.radio-tile--row {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 0.625rem;
+}
+/* ─ Inline modifier (icon + label centrados, compacto) ─ */
+.radio-tile.radio-tile--inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 0.75rem;
+  gap: 0.5rem;
+}
+/* ─ Expense variant (rose) ─ */
+.radio-tile--expense .radio-tile:hover { border-color: #f43f5e; }
+.radio-tile--expense .radio-tile-input:checked + .radio-tile {
+  border-color: #f43f5e;
+  background-color: rgba(244,63,94,0.1);
+  box-shadow: 0 4px 14px rgba(244,63,94,0.15);
+  color: #fb7185;
+}
+.radio-tile--expense .radio-tile-input:checked + .radio-tile::before {
+  background-color: #f43f5e;
+  border-color: #f43f5e;
+}
+.radio-tile--expense .radio-tile-input:checked + .radio-tile .radio-tile__label { color: #fb7185; }
+/* ─ Income variant (emerald) ─ */
+.radio-tile--income .radio-tile:hover { border-color: #10b981; }
+.radio-tile--income .radio-tile-input:checked + .radio-tile {
+  border-color: #10b981;
+  background-color: rgba(16,185,129,0.1);
+  box-shadow: 0 4px 14px rgba(16,185,129,0.15);
+  color: #34d399;
+}
+.radio-tile--income .radio-tile-input:checked + .radio-tile::before {
+  background-color: #10b981;
+  border-color: #10b981;
+}
+.radio-tile--income .radio-tile-input:checked + .radio-tile .radio-tile__label { color: #34d399; }

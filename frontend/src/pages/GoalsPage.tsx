@@ -369,27 +369,24 @@ function CreateGoalModal({ onClose }: { onClose: () => void }) {
           <div>
             <p className="text-xs text-surface-500 uppercase tracking-widest font-semibold mb-3">1 · Tipo de meta</p>
             <div className="grid grid-cols-2 gap-2">
-              {GOAL_TYPES.map((t) => {
-                const tc = TYPE_COLORS[t.color];
-                return (
-                  <button
-                    key={t.value}
-                    type="button"
-                    onClick={() => { setValue('type', t.value); setValue('emoji', t.emoji); }}
-                    className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                      selectedType === t.value
-                        ? `border-primary-500 ${tc.bg}`
-                        : 'border-surface-700 hover:border-surface-600 bg-surface-900/50'
-                    }`}
-                  >
-                    <span className="text-2xl">{t.emoji}</span>
-                    <div>
-                      <p className={`text-sm font-semibold ${selectedType === t.value ? tc.text : 'text-surface-200'}`}>{t.label}</p>
-                      <p className="text-[11px] text-surface-500 leading-tight mt-0.5">{t.desc}</p>
-                    </div>
-                  </button>
-                );
-              })}
+              {GOAL_TYPES.map((t) => (
+                <label key={t.value} className="cursor-pointer">
+                  <input
+                    type="radio"
+                    name="goal-type"
+                    className="radio-tile-input"
+                    checked={selectedType === t.value}
+                    onChange={() => { setValue('type', t.value); setValue('emoji', t.emoji); }}
+                  />
+                  <span className="radio-tile radio-tile--row w-full">
+                    <span className="text-2xl leading-none flex-shrink-0 mt-0.5">{t.emoji}</span>
+                    <span>
+                      <span className="radio-tile__label block">{t.label}</span>
+                      <span className="radio-tile__desc block">{t.desc}</span>
+                    </span>
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
 

@@ -427,24 +427,25 @@ export default function TransactionModal({ transaction, onClose }: Props) {
                 name="type"
                 control={control}
                 render={({ field }) => (
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-surface-800 rounded-xl border border-surface-700/50">
+                  <div className="grid grid-cols-2 gap-2">
                     {(['expense', 'income'] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => field.onChange(t)}
-                        className={clsx(
-                          'flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all',
-                          field.value === t
-                            ? t === 'expense'
-                              ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/40'
-                              : 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40'
-                            : 'text-surface-400 hover:text-surface-50'
-                        )}
-                      >
-                        {t === 'expense' ? <TrendingDown size={16} /> : <TrendingUp size={16} />}
-                        {t === 'expense' ? 'Gasto' : 'Ingreso'}
-                      </button>
+                      <label key={t} className={`radio-tile--${t}`}>
+                        <input
+                          type="radio"
+                          name="tx-type"
+                          className="radio-tile-input"
+                          checked={field.value === t}
+                          onChange={() => field.onChange(t)}
+                        />
+                        <span className="radio-tile radio-tile--inline w-full">
+                          {t === 'expense'
+                            ? <TrendingDown size={16} className="flex-shrink-0" />
+                            : <TrendingUp size={16} className="flex-shrink-0" />}
+                          <span className="radio-tile__label">
+                            {t === 'expense' ? 'Gasto' : 'Ingreso'}
+                          </span>
+                        </span>
+                      </label>
                     ))}
                   </div>
                 )}
