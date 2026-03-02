@@ -21,6 +21,7 @@ export interface TxPayload {
   notes?: string;
   tags?: string[];
   isRecurring?: boolean;
+  institutionId?: string;
 }
 
 // ── Hooks ──────────────────────────────────────────────────────────────────────

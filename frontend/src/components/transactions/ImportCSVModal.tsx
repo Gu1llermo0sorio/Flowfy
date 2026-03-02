@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, Upload, CheckCircle, AlertCircle, Loader2, FileText, ChevronRight } from 'lucide-react';
+import { X, Upload, CheckCircle, AlertCircle, Loader2, FileText, ChevronRight, CreditCard } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
 import { useUIStore } from '../../stores/uiStore';
+import { useCategories } from '../../hooks/useTransactions';
+import { formatCurrency } from '../../lib/formatters';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface ColumnMapping {
@@ -21,29 +23,68 @@ interface PreviewResult {
   availableColumns: string[];
 }
 
+interface PdfRow {
+  date: string;
+  description: string;
+  amount: number;
+  currency: string;
+  type: 'income' | 'expense';
+  installmentCurrent: number | null;
+  installmentTotal: number | null;
+  institution: string;
+  keep: boolean;
+}
+
+interface PdfPreviewResult {
+  rows: PdfRow[];
+  totalRows: number;
+  institution: string;
+}
+
 interface ImportCSVModalProps {
   onClose: () => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-const STEP_LABELS = ['Subir CSV', 'Revisar columnas', 'Confirmar importación'];
+const CSV_STEP_LABELS = ['Subir CSV', 'Revisar columnas', 'Confirmar'];
+const PDF_STEP_LABELS = ['Subir PDF', 'Revisar transacciones', 'Confirmar'];
+
+const INSTITUTION_LABELS: Record<string, string> = {
+  oca: 'OCA',
+  brou: 'BROU',
+  itau: 'Itaú',
+  santander: 'Santander',
+  credit_card: 'Tarjeta',
+};
 
 // ── Component ──────────────────────────────────────────────────────────────────
 export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   const qc = useQueryClient();
   const addToast = useUIStore((s) => s.addToast);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { data: categoriesData } = useCategories();
+  const categories = categoriesData ?? [];
 
+  const [mode, setMode] = useState<'csv' | 'pdf'>('csv');
   const [step, setStep] = useState(0);
   const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [defaultCategoryId, setDefaultCategoryId] = useState('');
+
+  // CSV state
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping>({});
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
-  const [dragOver, setDragOver] = useState(false);
 
-  // ── Step 0: upload ─────────────────────────────────────────────────────────
-  const handleFile = async (f: File) => {
+  // PDF state
+  const [pdfPreview, setPdfPreview] = useState<PdfPreviewResult | null>(null);
+  const [pdfRows, setPdfRows] = useState<PdfRow[]>([]);
+
+  const stepLabels = mode === 'pdf' ? PDF_STEP_LABELS : CSV_STEP_LABELS;
+
+  // ── CSV Flow ───────────────────────────────────────────────────────────────
+  const handleCSVFile = async (f: File) => {
     setFile(f);
     setLoading(true);
     try {
@@ -63,16 +104,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
     }
   };
 
-  const handleDrop = (ev: React.DragEvent) => {
-    ev.preventDefault();
-    setDragOver(false);
-    const f = ev.dataTransfer.files[0];
-    if (f && f.name.endsWith('.csv')) void handleFile(f);
-    else addToast({ type: 'error', message: 'Solo se aceptan archivos .csv' });
-  };
-
-  // ── Step 2: confirm ────────────────────────────────────────────────────────
-  const handleConfirm = async () => {
+  const handleCSVConfirm = async () => {
     if (!file) return;
     setLoading(true);
     try {
@@ -94,14 +126,79 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
     }
   };
 
+  // ── PDF Flow ───────────────────────────────────────────────────────────────
+  const handlePDFFile = async (f: File) => {
+    setFile(f);
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', f);
+      const { data } = await apiClient.post<{ success: boolean; data: PdfPreviewResult }>('/import/pdf-preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setPdfPreview(data.data);
+      setPdfRows(data.data.rows.map((r) => ({ ...r, keep: true })));
+      setStep(1);
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      addToast({ type: 'error', message: err.response?.data?.message ?? 'Error al procesar el PDF' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePDFConfirm = async () => {
+    const rowsToImport = pdfRows.filter((r) => r.keep);
+    if (!rowsToImport.length) { addToast({ type: 'error', message: 'No hay transacciones seleccionadas' }); return; }
+    if (!defaultCategoryId) { addToast({ type: 'error', message: 'Seleccioná una categoría por defecto' }); return; }
+    setLoading(true);
+    try {
+      const { data } = await apiClient.post<{ success: boolean; data: { imported: number; skipped: number } }>('/import/pdf-confirm', {
+        rows: rowsToImport,
+        defaultCategoryId,
+      });
+      setResult(data.data);
+      setStep(2);
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['monthly-summary'] });
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      addToast({ type: 'error', message: err.response?.data?.message ?? 'Error al importar' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── File handler ───────────────────────────────────────────────────────────
+  const handleFile = (f: File) => {
+    if (f.name.toLowerCase().endsWith('.pdf')) {
+      setMode('pdf');
+      void handlePDFFile(f);
+    } else if (f.name.toLowerCase().endsWith('.csv')) {
+      setMode('csv');
+      void handleCSVFile(f);
+    } else {
+      addToast({ type: 'error', message: 'Solo se aceptan archivos .csv o .pdf' });
+    }
+  };
+
+  const handleDrop = (ev: React.DragEvent) => {
+    ev.preventDefault();
+    setDragOver(false);
+    const f = ev.dataTransfer.files[0];
+    if (f) handleFile(f);
+  };
+
+  const checkedCount = pdfRows.filter((r) => r.keep).length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="card w-full max-w-2xl max-h-[92vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-surface-700">
+        <div className="flex items-center justify-between p-5 border-b border-surface-700 flex-shrink-0">
           <div>
             <h2 className="text-base font-semibold text-surface-50">Importar movimientos</h2>
-            <p className="text-xs text-surface-400 mt-0.5">Paso {step + 1} de 3 — {STEP_LABELS[step]}</p>
+            <p className="text-xs text-surface-400 mt-0.5">Paso {step + 1} de 3 — {stepLabels[step]}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-surface-400 hover:text-surface-200">
             <X className="w-4 h-4" />
@@ -109,8 +206,8 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
         </div>
 
         {/* Step indicator */}
-        <div className="flex items-center px-5 py-3 border-b border-surface-700">
-          {STEP_LABELS.map((label, i) => (
+        <div className="flex items-center px-5 py-3 border-b border-surface-700 flex-shrink-0">
+          {stepLabels.map((label, i) => (
             <div key={i} className="flex items-center">
               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
                 i < step ? 'bg-positive-500 text-white' :
@@ -119,18 +216,36 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 {i < step ? '✓' : i + 1}
               </div>
               <span className={`text-xs ml-1.5 hidden sm:block ${i === step ? 'text-surface-200' : 'text-surface-500'}`}>{label}</span>
-              {i < STEP_LABELS.length - 1 && <ChevronRight className="w-3.5 h-3.5 text-surface-600 mx-2" />}
+              {i < stepLabels.length - 1 && <ChevronRight className="w-3.5 h-3.5 text-surface-600 mx-2" />}
             </div>
           ))}
         </div>
 
-        <div className="p-5">
-          {/* Step 0: Upload */}
+        <div className="p-5 overflow-y-auto flex-1">
+
+          {/* ── Step 0: Upload ── */}
           {step === 0 && (
-            <div>
-              <p className="text-sm text-surface-300 mb-4">
-                Subí un archivo CSV exportado de tu banco o app de finanzas. Flowfy detectará las columnas automáticamente.
+            <div className="space-y-4">
+              <p className="text-sm text-surface-300">
+                Subí un archivo CSV de tu banco o el PDF de tu extracto de tarjeta. La IA procesará el PDF automáticamente.
               </p>
+              {/* Mode selector */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setMode('csv')}
+                  className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${mode === 'csv' ? 'border-primary-500/60 bg-primary-500/10 text-primary-400' : 'border-surface-700 text-surface-400 hover:border-surface-500'}`}
+                >
+                  <FileText className="w-4 h-4" />
+                  CSV / Excel
+                </button>
+                <button
+                  onClick={() => setMode('pdf')}
+                  className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${mode === 'pdf' ? 'border-primary-500/60 bg-primary-500/10 text-primary-400' : 'border-surface-700 text-surface-400 hover:border-surface-500'}`}
+                >
+                  <CreditCard className="w-4 h-4" />
+                  PDF de tarjeta
+                </button>
+              </div>
               <div
                 className={`border-2 border-dashed rounded-2xl p-10 text-center transition-colors cursor-pointer ${
                   dragOver ? 'border-primary-400 bg-primary-500/10' : 'border-surface-600 hover:border-surface-500'
@@ -145,18 +260,28 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 ) : (
                   <>
                     <Upload className="w-8 h-8 mx-auto text-surface-400 mb-2" />
-                    <p className="text-sm text-surface-300 font-medium">Arrastrá tu CSV aquí</p>
+                    <p className="text-sm text-surface-300 font-medium">
+                      {mode === 'pdf' ? 'Arrastrá tu PDF del extracto aquí' : 'Arrastrá tu CSV aquí'}
+                    </p>
                     <p className="text-xs text-surface-500 mt-1">o hacé clic para seleccionar</p>
-                    <p className="text-xs text-surface-600 mt-2">Solo archivos .csv, máx 5 MB</p>
+                    <p className="text-xs text-surface-600 mt-2">
+                      {mode === 'pdf' ? 'Archivos .pdf — OCA, BROU, Itaú, etc. • máx 20 MB' : 'Solo archivos .csv, máx 5 MB'}
+                    </p>
                   </>
                 )}
               </div>
-              <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); }} />
+              <input ref={fileRef} type="file" accept=".csv,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+              {mode === 'pdf' && (
+                <p className="text-xs text-surface-500 flex items-center gap-1.5">
+                  <span className="text-primary-400">✨</span>
+                  La IA leerá el PDF y extraerá todas las transacciones automáticamente
+                </p>
+              )}
             </div>
           )}
 
-          {/* Step 1: Review mapping */}
-          {step === 1 && preview && (
+          {/* ── Step 1 CSV: Review mapping ── */}
+          {step === 1 && mode === 'csv' && preview && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm text-surface-300">
                 <FileText className="w-4 h-4 text-primary-400" />
@@ -164,7 +289,6 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 <span className="text-surface-500">— {preview.totalRows} filas detectadas</span>
               </div>
 
-              {/* Column mapping */}
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-surface-400 uppercase tracking-wide">Mapeo de columnas</p>
                 {(Object.keys({ date: '', description: '', amount: '', type: '', category: '', currency: '' }) as Array<keyof ColumnMapping>).map((field) => (
@@ -188,7 +312,6 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 ))}
               </div>
 
-              {/* Preview table */}
               <div>
                 <p className="text-xs font-semibold text-surface-400 uppercase tracking-wide mb-2">Vista previa (primeras 5 filas)</p>
                 <div className="overflow-x-auto rounded-xl border border-surface-700">
@@ -215,13 +338,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
 
               <div className="flex gap-2 pt-2">
                 <button onClick={() => setStep(0)} className="btn-secondary flex-1 py-2">Atrás</button>
-                <button
-                  onClick={() => setStep(2)}
-                  disabled={!mapping.date || !mapping.amount}
-                  className="btn-primary flex-1 py-2"
-                >
-                  Continuar
-                </button>
+                <button onClick={() => setStep(2)} disabled={!mapping.date || !mapping.amount} className="btn-primary flex-1 py-2">Continuar</button>
               </div>
               {(!mapping.date || !mapping.amount) && (
                 <p className="text-xs text-warning-500 flex items-center gap-1">
@@ -232,8 +349,96 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
             </div>
           )}
 
-          {/* Step 2: Confirm or result */}
-          {step === 2 && !result && (
+          {/* ── Step 1 PDF: Review AI-extracted transactions ── */}
+          {step === 1 && mode === 'pdf' && pdfPreview && (
+            <div className="space-y-4">
+              {/* Header info */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-surface-300">
+                  <CreditCard className="w-4 h-4 text-primary-400" />
+                  <span className="font-medium">{file?.name}</span>
+                  <span className="text-xs bg-primary-500/15 text-primary-400 px-2 py-0.5 rounded-full">
+                    {INSTITUTION_LABELS[pdfPreview.institution] ?? pdfPreview.institution}
+                  </span>
+                </div>
+                <div className="text-xs text-surface-400">
+                  <span className="text-surface-50 font-semibold">{checkedCount}</span> / {pdfRows.length} seleccionadas
+                </div>
+              </div>
+
+              {/* Select/deselect all */}
+              <div className="flex items-center gap-3">
+                <button onClick={() => setPdfRows((r) => r.map((x) => ({ ...x, keep: true })))} className="text-xs text-primary-400 hover:text-primary-300">Seleccionar todo</button>
+                <span className="text-surface-600">·</span>
+                <button onClick={() => setPdfRows((r) => r.map((x) => ({ ...x, keep: false })))} className="text-xs text-surface-400 hover:text-surface-200">Deseleccionar todo</button>
+              </div>
+
+              {/* Transactions list */}
+              <div className="rounded-xl border border-surface-700 overflow-hidden max-h-72 overflow-y-auto">
+                <table className="text-xs w-full">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-surface-800 border-b border-surface-700">
+                      <th className="w-8 px-2 py-2"></th>
+                      <th className="text-left px-2 py-2 text-surface-400 font-medium">Fecha</th>
+                      <th className="text-left px-2 py-2 text-surface-400 font-medium">Descripción</th>
+                      <th className="text-left px-2 py-2 text-surface-400 font-medium">Cuotas</th>
+                      <th className="text-right px-2 py-2 text-surface-400 font-medium">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pdfRows.map((row, i) => (
+                      <tr key={i} className={`border-b border-surface-800 transition-colors ${row.keep ? 'hover:bg-surface-800/50' : 'opacity-40'}`}>
+                        <td className="px-2 py-2 text-center">
+                          <input type="checkbox" checked={row.keep} onChange={(e) => setPdfRows((prev) => prev.map((r, idx) => idx === i ? { ...r, keep: e.target.checked } : r))} className="w-3.5 h-3.5 rounded border-surface-600 bg-surface-800 text-primary-500 cursor-pointer" />
+                        </td>
+                        <td className="px-2 py-2 text-surface-400 whitespace-nowrap">{row.date}</td>
+                        <td className="px-2 py-2 text-surface-200 max-w-[160px] truncate">{row.description}</td>
+                        <td className="px-2 py-2 text-surface-500 whitespace-nowrap">
+                          {row.installmentTotal ? `${row.installmentCurrent}/${row.installmentTotal}` : '—'}
+                        </td>
+                        <td className="px-2 py-2 text-right font-mono whitespace-nowrap">
+                          <span className={row.currency === 'USD' ? 'text-amber-400' : 'text-surface-200'}>
+                            {row.currency === 'USD' ? `U$S ${(row.amount / 100).toFixed(2)}` : formatCurrency(row.amount)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Default category */}
+              <div>
+                <label className="block text-xs font-medium text-surface-400 mb-1.5">
+                  Categoría por defecto <span className="text-surface-500">(se aplica a las que no tienen)</span>
+                </label>
+                <select
+                  value={defaultCategoryId}
+                  onChange={(e) => setDefaultCategoryId(e.target.value)}
+                  className="w-full text-xs px-3 py-2 rounded-xl bg-surface-800 border border-surface-700 text-surface-200 focus:outline-none focus:ring-1 focus:ring-primary-500/40"
+                >
+                  <option value="">— Seleccioná una categoría —</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.icon} {c.nameEs}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => { setStep(0); setPdfPreview(null); setPdfRows([]); }} className="btn-secondary flex-1 py-2">Atrás</button>
+                <button
+                  onClick={() => setStep(2)}
+                  disabled={checkedCount === 0 || !defaultCategoryId}
+                  className="btn-primary flex-1 py-2"
+                >
+                  Continuar ({checkedCount})
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 2 CSV: Confirm ── */}
+          {step === 2 && mode === 'csv' && !result && (
             <div className="space-y-4">
               <div className="bg-surface-800 rounded-xl p-4 text-sm space-y-2">
                 <p className="text-surface-300">Se importarán <strong className="text-surface-50">{preview?.totalRows}</strong> movimientos desde <strong className="text-surface-50">{file?.name}</strong>.</p>
@@ -241,7 +446,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setStep(1)} className="btn-secondary flex-1 py-2">Atrás</button>
-                <button onClick={handleConfirm} disabled={loading} className="btn-primary flex-1 py-2 flex items-center justify-center gap-1.5">
+                <button onClick={handleCSVConfirm} disabled={loading} className="btn-primary flex-1 py-2 flex items-center justify-center gap-1.5">
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Importar
                 </button>
@@ -249,7 +454,24 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
             </div>
           )}
 
-          {/* Result */}
+          {/* ── Step 2 PDF: Confirm ── */}
+          {step === 2 && mode === 'pdf' && !result && (
+            <div className="space-y-4">
+              <div className="bg-surface-800 rounded-xl p-4 text-sm space-y-2">
+                <p className="text-surface-300">Se importarán <strong className="text-surface-50">{checkedCount}</strong> transacciones del extracto <strong className="text-surface-50">{INSTITUTION_LABELS[pdfPreview?.institution ?? ''] ?? 'tarjeta'}</strong>.</p>
+                <p className="text-surface-400 text-xs">Se marcarán como método de pago: Crédito. Los duplicados se ignoran.</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setStep(1)} className="btn-secondary flex-1 py-2">Atrás</button>
+                <button onClick={handlePDFConfirm} disabled={loading} className="btn-primary flex-1 py-2 flex items-center justify-center gap-1.5">
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Importar {checkedCount} transacciones
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Result ── */}
           {step === 2 && result && (
             <div className="text-center space-y-4 py-4">
               <CheckCircle className="w-14 h-14 text-positive-400 mx-auto" />

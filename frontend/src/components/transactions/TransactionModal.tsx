@@ -71,6 +71,7 @@ const schema = z.object({
   notes: z.string().max(500).optional(),
   tagsRaw: z.string().optional(),
   isRecurring: z.boolean().optional(),
+  cardLabel: z.string().max(60).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -138,11 +139,13 @@ export default function TransactionModal({ transaction, onClose }: Props) {
       notes: transaction?.notes ?? '',
       tagsRaw: transaction?.tags?.join(', ') ?? '',
       isRecurring: transaction?.isRecurring ?? false,
+      cardLabel: (transaction as any)?.institutionId ?? '',
     },
   });
 
   const selectedType = watch('type');
   const selectedCategoryId = watch('categoryId');
+  const selectedPaymentMethod = watch('paymentMethod');
 
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
   const subcategories = selectedCategory?.subcategories ?? [];
@@ -285,6 +288,7 @@ export default function TransactionModal({ transaction, onClose }: Props) {
           ? values.tagsRaw.split(',').map((t) => t.trim()).filter(Boolean)
           : [],
         isRecurring: values.isRecurring ?? false,
+        institutionId: values.cardLabel?.trim() || undefined,
       };
 
       if (isEdit && transaction) {
@@ -862,6 +866,17 @@ export default function TransactionModal({ transaction, onClose }: Props) {
                       }
                     />
                   </div>
+                  {/* Card name input — shown when debit or credit */}
+                  {(selectedPaymentMethod === 'debit' || selectedPaymentMethod === 'credit') && (
+                    <div className="mt-2">
+                      <input
+                        {...register('cardLabel')}
+                        type="text"
+                        placeholder={selectedPaymentMethod === 'credit' ? 'Ej: OCA Visa, BROU Mastercard…' : 'Ej: BROU Débito, Itaú…'}
+                        className="w-full bg-surface-900 border border-surface-700 rounded-xl px-3 py-2 text-xs text-surface-200 placeholder-surface-600 focus:outline-none focus:ring-1 focus:ring-primary-500/30 focus:border-primary-500/50 transition-all"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

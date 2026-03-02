@@ -25,6 +25,7 @@ const createTransactionSchema = z.object({
   tags: z.array(z.string().max(30)).max(10).optional().default([]),
   receiptUrl: z.string().url().optional(),
   isRecurring: z.boolean().optional().default(false),
+  institutionId: z.string().max(100).optional(),
 });
 
 const updateTransactionSchema = createTransactionSchema.partial();
@@ -172,6 +173,7 @@ transactionRouter.post(
           receiptUrl: data.receiptUrl,
           isRecurring: data.isRecurring ?? false,
           importSource: 'manual',
+          institutionId: data.institutionId ?? null,
         },
         include: {
           category: { select: { id: true, nameEs: true, icon: true, color: true } },
