@@ -179,8 +179,19 @@ export default function TransactionModal({ transaction, onClose }: Props) {
     setAiApplied(true);
     if (switchToManual) {
       setMode('manual');
-      addToast({ type: 'success', message: 'Formulario completado — revisá y guardá' });
     }
+  };
+
+  // Direct save from capture screen: apply AI values then submit.
+  // If validation fails (e.g. no category detected), fall back to manual form.
+  const handleDirectSave = () => {
+    applyAIResults(false);
+    setTimeout(() => {
+      handleSubmit(onSubmit, () => {
+        // Validation error → open manual form so user can fix missing fields
+        setMode('manual');
+      })();
+    }, 50);
   };
 
   const onSubmit = async (values: FormValues) => {
@@ -352,13 +363,24 @@ export default function TransactionModal({ transaction, onClose }: Props) {
                           </div>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => applyAIResults(true)}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold transition-colors"
-                      >
-                        <Zap className="w-4 h-4" /> Revisar y guardar
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={handleDirectSave}
+                          disabled={isSubmitting}
+                          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+                        >
+                          {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                          Guardar gasto
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyAIResults(true)}
+                          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-surface-600 text-surface-300 hover:text-white hover:border-surface-500 text-xs font-medium transition-colors"
+                        >
+                          Revisar antes de guardar →
+                        </button>
+                      </div>
                     </div>
                   )}
 

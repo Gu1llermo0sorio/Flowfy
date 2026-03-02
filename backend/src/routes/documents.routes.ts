@@ -54,31 +54,80 @@ async function runOCR(filePath: string): Promise<string> {
   }
 }
 
+/**
+ * Parse a raw number string handling both:
+ *  - UY/EU format: thousands='.', decimal=','  → "1.470" = 1470, "1.470,50" = 1470.50
+ *  - US format: thousands=',', decimal='.'     → "1,470" = 1470, "1,470.50" = 1470.50
+ */
+function parseAmount(raw: string): number | null {
+  const digits = raw.replace(/[^0-9.,]/g, '');
+  if (!digits || digits.length === 0) return null;
+
+  const lastDot   = digits.lastIndexOf('.');
+  const lastComma = digits.lastIndexOf(',');
+
+  let normalized: string;
+  if (lastComma > lastDot) {
+    // UY/EU: "1.470,50" → remove dots (thousands), replace comma with dot
+    normalized = digits.replace(/\./g, '').replace(',', '.');
+  } else if (lastDot > lastComma) {
+    // Check if dot is a thousands separator: exactly 3 digits after dot and no decimal follows
+    const afterDot = digits.slice(lastDot + 1);
+    if (afterDot.length === 3 && !afterDot.includes(',')) {
+      // Dot is thousands separator: "1.470" = 1470
+      normalized = digits.replace(/\./g, '');
+    } else {
+      // Dot is decimal: "1470.50" or "1,470.50"
+      normalized = digits.replace(/,/g, '');
+    }
+  } else {
+    normalized = digits;
+  }
+
+  const value = parseFloat(normalized);
+  return isNaN(value) || value <= 0 ? null : value;
+}
+
 function extractAmounts(text: string): Array<{ raw: string; value: number }> {
-  // Match patterns like 1.234,56 or 1,234.56 or 1234 or $1.234
-  const regex = /\$?\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)/g;
+  // Match patterns like 1.234,56 or 1,234.56 or 1234 or $U1.234
+  const regex = /\$[Uu]?\s*\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?/g;
   const results: Array<{ raw: string; value: number }> = [];
   let m: RegExpExecArray | null;
   while ((m = regex.exec(text)) !== null) {
     const raw = m[0].trim();
-    const normalized = raw.replace(/[^0-9.,]/g, '').replace(',', '.');
-    const value = parseFloat(normalized);
-    if (!isNaN(value) && value > 0) results.push({ raw, value });
+    const value = parseAmount(raw);
+    if (value !== null && value >= 1) results.push({ raw, value });
   }
-  return results.slice(0, 20); // limit
+  // Remove duplicates and limit
+  return results.filter((a, i, arr) => arr.findIndex(b => b.value === a.value) === i).slice(0, 20);
+}
+
+/** Look for the TOTAL line in OCR text (most reliable amount) */
+function findTotalAmount(text: string): number | null {
+  const totalKeywords = /\b(total|subtotal|importe|a\s+pagar|monto\s+total|suma|ticket\s+total|amount\s+due)\b/i;
+  const lines = text.split(/\n/);
+  for (const line of lines) {
+    if (totalKeywords.test(line)) {
+      const amounts = extractAmounts(line);
+      if (amounts.length > 0) return Math.max(...amounts.map(a => a.value));
+    }
+  }
+  return null;
 }
 
 // ── AI analysis helpers ────────────────────────────────────────────────────────
 function fallbackParse(ocrText: string): ParsedReceipt {
   const amounts = extractAmounts(ocrText);
-  const topAmount = amounts.length > 0 ? amounts[amounts.length - 1].value : null;
-  const isuyu = /\$U|UYU|\bpesos?\b/i.test(ocrText);
-  const isusd = /USD|\bdólares?\b/i.test(ocrText);
+  // Prefer a TOTAL line; fallback to largest detected amount
+  const totalAmount = findTotalAmount(ocrText)
+    ?? (amounts.length > 0 ? Math.max(...amounts.map(a => a.value)) : null);
+  const isuyu = /\$[Uu]|UYU|\bpesos?\b/i.test(ocrText);
+  const isusd = /USD|\bd[oó]lares?\b/i.test(ocrText);
   return {
     merchant: null,
     description: ocrText.replace(/\s+/g, ' ').trim().slice(0, 60) || null,
-    amount: topAmount,
-    currency: isuyu ? 'UYU' : isusd ? 'USD' : null,
+    amount: totalAmount,
+    currency: isuyu ? 'UYU' : isusd ? 'USD' : 'UYU', // assume UYU by default
     date: null,
     categoryHint: null,
     paymentMethod: null,
@@ -105,22 +154,31 @@ async function analyzeWithAI(ocrText: string, imagePath: string | null): Promise
       content.push({ type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } });
     }
 
-    const ocrSnippet = ocrText ? `\n\nTexto OCR detectado:\n${ocrText.slice(0, 800)}` : '';
+    const ocrSnippet = ocrText ? `\n\nTexto OCR detectado:\n${ocrText.slice(0, 1200)}` : '';
     content.push({
       type: 'text',
-      text: `Eres un asistente de finanzas personales. Analiza este comprobante/ticket y extrae los datos del gasto.${ocrSnippet}
+      text: `Eres un asistente de finanzas personales uruguayo. Analiza este comprobante/ticket de Uruguay y extrae los datos del GASTO TOTAL pagado.${ocrSnippet}
 
-Responde ÚNICAMENTE con un JSON válido (sin texto extra, sin markdown) con esta estructura:
+IMPORTANTE sobre números uruguayos:
+- El PUNTO es separador de MILES: $1.470 = MIL CUATROCIENTOS SETENTA pesos (NO 1.47)
+- La COMA es separador decimal: $1.470,50 = mil cuatrocientos setenta con cincuenta centésimos
+- Busca la línea que diga TOTAL, IMPORTE, A PAGAR o MONTO — ese es el importe a devolver
+- Si no hay una línea total explícita, devolver el monto más grande del ticket
+- Moneda por defecto: UYU
+
+Responde ÚNICAMENTE con un JSON válido (sin texto extra, sin markdown, sin bloques de código):
 {
-  "merchant": "Nombre del comercio o empresa, null si no se detecta",
-  "description": "Descripción breve del gasto en español (máx 60 chars), null si no se detecta",
-  "amount": 0.00,
-  "currency": "UYU o USD o EUR o null",
+  "merchant": "Nombre del comercio, null si no se detecta",
+  "description": "Descripción del gasto en español, máx 60 caracteres, null si no se detecta",
+  "amount": 0,
+  "currency": "UYU o USD o EUR",
   "date": "YYYY-MM-DD o null",
   "categoryHint": "food o transport o entertainment o health o shopping o utilities o education o housing o other o null",
   "paymentMethod": "cash o debit o credit o transfer o other o null",
   "confidence": 0.95
-}`,
+}
+
+Recordá: amount debe ser un número entero o decimal, NUNCA un string. UYU es la moneda por defecto.`,
     });
 
     const resp = await client.messages.create({
