@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, Upload, CheckCircle, AlertCircle, Loader2, FileText, ChevronRight, CreditCard } from 'lucide-react';
+import { X, Upload, CheckCircle, AlertCircle, Loader2, FileText, ChevronRight, CreditCard, AlertTriangle } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
 import { useUIStore } from '../../stores/uiStore';
 import { useCategories } from '../../hooks/useTransactions';
@@ -35,6 +35,7 @@ interface PdfRow {
   keep: boolean;
   categoryId: string;       // '' = use default
   categoryHint: string | null; // nameEs of auto-detected category
+  possibleDuplicate?: boolean; // true = ya existe una tx similar en la BD
 }
 
 interface PdfPreviewResult {
@@ -85,6 +86,8 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   const [pdfRows, setPdfRows] = useState<PdfRow[]>([]);
   const [importBatchId, setImportBatchId] = useState<string | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
+  // prompt for bulk-apply when user changes a category on a row with siblings
+  const [bulkPrompt, setBulkPrompt] = useState<{ description: string; newCategoryId: string; count: number } | null>(null);
 
   const stepLabels = mode === 'pdf' ? PDF_STEP_LABELS : CSV_STEP_LABELS;
 
@@ -142,7 +145,12 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setPdfPreview(data.data);
-      setPdfRows(data.data.rows.map((r) => ({ ...r, keep: true, categoryId: r.categoryId ?? '', categoryHint: r.categoryHint ?? null })));
+      setPdfRows(data.data.rows.map((r) => ({
+        ...r,
+        keep: !r.possibleDuplicate,   // duplicados empiezan deseleccionados
+        categoryId: r.categoryId ?? '',
+        categoryHint: r.categoryHint ?? null,
+      })));
       setStep(1);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -178,6 +186,28 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
     }
   };
 
+  // ── Handle inline category change with optional bulk-apply prompt ──────────
+  const handleRowCategoryChange = (rowIndex: number, newCategoryId: string) => {
+    const row = pdfRows[rowIndex];
+    setPdfRows((prev) => prev.map((r, idx) => idx === rowIndex ? { ...r, categoryId: newCategoryId } : r));
+    const siblingsCount = pdfRows.filter((r, idx) =>
+      idx !== rowIndex && r.keep && r.description === row.description && !r.categoryId
+    ).length;
+    if (siblingsCount > 0 && newCategoryId) {
+      setBulkPrompt({ description: row.description, newCategoryId, count: siblingsCount });
+    }
+  };
+
+  const handleBulkApply = () => {
+    if (!bulkPrompt) return;
+    setPdfRows((prev) => prev.map((r) =>
+      r.description === bulkPrompt.description && !r.categoryId
+        ? { ...r, categoryId: bulkPrompt.newCategoryId }
+        : r
+    ));
+    setBulkPrompt(null);
+  };
+
   // ── File handler ───────────────────────────────────────────────────────────
   const handleFile = (f: File) => {
     if (f.name.toLowerCase().endsWith('.pdf')) {
@@ -199,6 +229,22 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   };
 
   const checkedCount = pdfRows.filter((r) => r.keep).length;
+
+  // Groups of uncategorized, kept rows — for quick-classify panel
+  const uncategorizedGroups = useMemo(() => {
+    const map = new Map<string, { count: number; indices: number[] }>();
+    pdfRows.forEach((row, idx) => {
+      if (row.keep && !row.categoryId) {
+        const entry = map.get(row.description) ?? { count: 0, indices: [] };
+        entry.count++;
+        entry.indices.push(idx);
+        map.set(row.description, entry);
+      }
+    });
+    return Array.from(map.entries()).map(([description, data]) => ({ description, ...data }));
+  }, [pdfRows]);
+
+  const dupeCount = pdfRows.filter((r) => r.possibleDuplicate).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -395,6 +441,63 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 })()
               )}
 
+              {/* Duplicate warning */}
+              {dupeCount > 0 && (
+                <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-warning-500/10 border border-warning-500/20 text-warning-400">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span><strong>{dupeCount}</strong> transacción(es) detectada(s) como posibles duplicados ya fueron deseleccionadas — revisalas con <span className="opacity-70">⚠</span> en la tabla.</span>
+                </div>
+              )}
+
+              {/* ── Quick-classify panel ── */}
+              {uncategorizedGroups.length > 0 && (
+                <div className="bg-surface-800/60 border border-warning-500/25 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertCircle className="w-3.5 h-3.5 text-warning-400 flex-shrink-0" />
+                    <p className="text-xs font-semibold text-warning-300">
+                      Clasificación rápida — {uncategorizedGroups.length} comercio(s) sin categoría
+                    </p>
+                  </div>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {uncategorizedGroups.map((group) => (
+                      <div key={group.description} className="flex items-center gap-2">
+                        <span className="text-xs text-surface-300 flex-1 truncate min-w-0" title={group.description}>
+                          {group.description}
+                          {group.count > 1 && <span className="text-surface-500 ml-1">×{group.count}</span>}
+                        </span>
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            if (!e.target.value) return;
+                            const catId = e.target.value;
+                            setPdfRows((prev) => prev.map((r) =>
+                              r.description === group.description && !r.categoryId ? { ...r, categoryId: catId } : r
+                            ));
+                          }}
+                          className="text-[10px] px-1.5 py-1 rounded-lg border border-warning-500/40 bg-surface-900 text-surface-400 focus:outline-none focus:ring-1 focus:ring-primary-500/40 flex-shrink-0 max-w-[130px]"
+                        >
+                          <option value="">— Asignar —</option>
+                          {categories.map((c) => (
+                            <option key={c.id} value={c.id}>{c.icon} {c.nameEs}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Bulk-apply prompt ── */}
+              {bulkPrompt && (
+                <div className="flex items-center gap-3 px-3 py-2.5 bg-primary-500/10 border border-primary-500/30 rounded-xl text-xs">
+                  <span className="text-surface-300 flex-1 min-w-0">
+                    ¿Aplicar también a las <strong className="text-white">{bulkPrompt.count}</strong> filas de <strong className="text-white">"{bulkPrompt.description.slice(0, 28)}{bulkPrompt.description.length > 28 ? '…' : ''}"</strong>?
+                  </span>
+                  <button onClick={handleBulkApply} className="text-primary-400 font-semibold hover:text-primary-300 whitespace-nowrap">Sí, todas</button>
+                  <button onClick={() => setBulkPrompt(null)} className="text-surface-500 hover:text-surface-300 whitespace-nowrap">Solo esta</button>
+                </div>
+              )}
+
               {/* Select/deselect all */}
               <div className="flex items-center gap-3">
                 <button onClick={() => setPdfRows((r) => r.map((x) => ({ ...x, keep: true })))} className="text-xs text-primary-400 hover:text-primary-300">Seleccionar todo</button>
@@ -417,19 +520,26 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                   </thead>
                   <tbody>
                     {pdfRows.map((row, i) => (
-                      <tr key={i} className={`border-b border-surface-800 transition-colors ${row.keep ? 'hover:bg-surface-800/50' : 'opacity-40'}`}>
+                      <tr key={i} className={`border-b border-surface-800 transition-colors ${
+                        !row.keep ? 'opacity-40' :
+                        row.possibleDuplicate ? 'bg-warning-500/5 hover:bg-warning-500/8' :
+                        'hover:bg-surface-800/50'
+                      }`}>
                         <td className="px-2 py-1.5 text-center">
                           <input type="checkbox" checked={row.keep} onChange={(e) => setPdfRows((prev) => prev.map((r, idx) => idx === i ? { ...r, keep: e.target.checked } : r))} className="w-3.5 h-3.5 rounded border-surface-600 bg-surface-800 text-primary-500 cursor-pointer" />
                         </td>
                         <td className="px-2 py-1.5 text-surface-400 whitespace-nowrap">{row.date}</td>
-                        <td className="px-2 py-1.5 text-surface-200 max-w-[120px] truncate" title={row.description}>{row.description}</td>
+                        <td className="px-2 py-1.5 max-w-[120px] truncate" title={`${row.possibleDuplicate ? '⚠ Posible duplicado — ' : ''}${row.description}`}>
+                          {row.possibleDuplicate && <span className="text-warning-400 mr-1" title="Posible duplicado">⚠</span>}
+                          <span className={row.possibleDuplicate ? 'text-warning-300' : 'text-surface-200'}>{row.description}</span>
+                        </td>
                         <td className="px-2 py-1.5 text-surface-500 whitespace-nowrap">
                           {row.installmentTotal ? `${row.installmentCurrent}/${row.installmentTotal}` : '—'}
                         </td>
                         <td className="px-2 py-1.5">
                           <select
                             value={row.categoryId}
-                            onChange={(e) => setPdfRows((prev) => prev.map((r, idx) => idx === i ? { ...r, categoryId: e.target.value } : r))}
+                            onChange={(e) => handleRowCategoryChange(i, e.target.value)}
                             className={`text-[10px] px-1.5 py-1 rounded-lg border max-w-[110px] bg-surface-900 focus:outline-none focus:ring-1 focus:ring-primary-500/40 ${row.categoryId ? 'border-surface-700 text-surface-200' : 'border-warning-500/50 text-surface-500'}`}
                           >
                             <option value="">— sin cat. —</option>
@@ -449,12 +559,12 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 </table>
               </div>
 
-              {/* Default category (for uncategorized rows) */}
+              {/* Default category fallback (only if some rows still uncategorized) */}
               {pdfRows.filter((r) => r.keep && !r.categoryId).length > 0 && (
                 <div>
                   <label className="block text-xs font-medium text-surface-400 mb-1.5">
-                    Categoría por defecto{' '}
-                    <span className="text-warning-400">({pdfRows.filter((r) => r.keep && !r.categoryId).length} sin categoría)</span>
+                    Categoría por defecto para las restantes{' '}
+                    <span className="text-warning-400">({pdfRows.filter((r) => r.keep && !r.categoryId).length} sin clasificar)</span>
                   </label>
                   <select
                     value={defaultCategoryId}
@@ -470,7 +580,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
               )}
 
               <div className="flex gap-2 pt-1">
-                <button onClick={() => { setStep(0); setPdfPreview(null); setPdfRows([]); }} className="btn-secondary flex-1 py-2">Atrás</button>
+                <button onClick={() => { setStep(0); setPdfPreview(null); setPdfRows([]); setBulkPrompt(null); }} className="btn-secondary flex-1 py-2">Atrás</button>
                 <button
                   onClick={() => setStep(2)}
                   disabled={checkedCount === 0 || (pdfRows.some((r) => r.keep && !r.categoryId) && !defaultCategoryId)}

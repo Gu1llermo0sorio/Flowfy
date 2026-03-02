@@ -145,7 +145,7 @@ importRouter.post('/confirm', async (req: AuthRequest, res, next) => {
 
     if (!rows?.length) throw createError('No hay filas para importar', 400, 'NO_ROWS');
     if (rows.length > 1000) throw createError('Máximo 1000 filas por importación', 400, 'TOO_MANY_ROWS');
-    if (!defaultCategoryId) throw createError('Categoría por defecto requerida', 400, 'NO_CATEGORY');
+    if (rows.some((r) => !r.categoryId) && !defaultCategoryId) throw createError('Categoría por defecto requerida', 400, 'NO_CATEGORY');
 
     // Get exchange rate
     const rate = await prisma.exchangeRate.findFirst({
@@ -207,6 +207,7 @@ interface ParsedTx {
   keep: boolean;
   categoryHint: string | null;  // nameEs of matched category
   categoryId: string | null;    // resolved after DB lookup
+  possibleDuplicate?: boolean;  // true when similar tx already exists in DB
 }
 
 // Map merchant keywords → category nameEs
@@ -403,7 +404,31 @@ importRouter.post('/pdf-preview', pdfUpload.single('file'), async (req: AuthRequ
     // If regex found enough transactions, use them; otherwise try AI
     if (resolvedRows.length >= 3 || !process.env.ANTHROPIC_API_KEY) {
       const institution = resolvedRows[0]?.institution || detectInstitution(text);
-      res.json({ success: true, data: { rows: resolvedRows, totalRows: resolvedRows.length, institution, parsedBy: 'regex', statementTotal } });
+
+      // ── Duplicate detection ────────────────────────────────────────────────
+      // Check which parsed rows may already exist in the DB (same amount + date ±2 days)
+      let finalRows: typeof resolvedRows = resolvedRows;
+      if (resolvedRows.length > 0) {
+        const rowDates = resolvedRows.map((r) => new Date(r.date).getTime()).filter((t) => !isNaN(t));
+        if (rowDates.length > 0) {
+          const minDate = new Date(Math.min(...rowDates) - 3 * 86400000);
+          const maxDate = new Date(Math.max(...rowDates) + 3 * 86400000);
+          const existing = await prisma.transaction.findMany({
+            where: { familyId: req.familyId!, date: { gte: minDate, lte: maxDate } },
+            select: { amount: true, date: true },
+          });
+          finalRows = resolvedRows.map((row) => {
+            const rowDate = new Date(row.date).getTime();
+            const isDupe = existing.some((ex) => {
+              const diff = Math.abs(ex.date.getTime() - rowDate);
+              return ex.amount === row.amount && diff <= 2 * 86400000;
+            });
+            return isDupe ? { ...row, possibleDuplicate: true } : row;
+          });
+        }
+      }
+
+      res.json({ success: true, data: { rows: finalRows, totalRows: finalRows.length, institution, parsedBy: 'regex', statementTotal } });
       return;
     }
 
@@ -499,7 +524,7 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
 
     if (!rows?.length) throw createError('No hay filas para importar', 400, 'NO_ROWS');
     if (rows.length > 500) throw createError('Máximo 500 filas por importación de PDF', 400, 'TOO_MANY_ROWS');
-    if (!defaultCategoryId) throw createError('Categoría por defecto requerida', 400, 'NO_CATEGORY');
+    if (rows.some((r) => !r.categoryId) && !defaultCategoryId) throw createError('Categoría por defecto requerida', 400, 'NO_CATEGORY');
 
     // Generate a batch ID for the whole import — allows undoing the whole batch
     const { randomUUID } = await import('crypto');
