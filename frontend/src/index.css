@@ -470,10 +470,68 @@ html:not(.dark) {
   transform: translateY(-50%);
 }
 
+/* ── Logout button — expands on hover ──────────────────────────────
+   Uso: <button class="btn-logout"> <span class="btn-logout__icon">SVG</span> <span class="btn-logout__text">Salir</span> </button>
+───────────────────────────────────────────────── */
+.btn-logout {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: width .3s ease, border-radius .3s ease;
+  box-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+  background-color: #f43f5e;
+  flex-shrink: 0;
+}
+.btn-logout__icon {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width .3s ease;
+  flex-shrink: 0;
+}
+.btn-logout__icon svg {
+  width: 15px;
+  height: 15px;
+  fill: white;
+}
+.btn-logout__text {
+  position: absolute;
+  right: 0;
+  width: 0;
+  opacity: 0;
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: width .3s ease, opacity .3s ease;
+}
+.btn-logout:hover {
+  width: 100px;
+  border-radius: 20px;
+}
+.btn-logout:hover .btn-logout__icon {
+  width: 35%;
+  padding-left: 10px;
+}
+.btn-logout:hover .btn-logout__text {
+  opacity: 1;
+  width: 65%;
+  padding-right: 8px;
+}
+.btn-logout:active { transform: translate(1px, 1px); }
+
 /* ── Underline input — animated gradient border on focus ──────
    Usá: <div class="form-field-line"> <input class="input-line"> <span class="input-line-border"> </div>
    Agregá "has-error" al wrapper para estado de error.
-───────────────────────────────────────────────────────────── */
+─────────────────────────────────────────────────────────────── */
 .form-field-line {
   position: relative;
 }
