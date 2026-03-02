@@ -280,22 +280,51 @@ function parseOCAStatement(text: string): ParsedTx[] {
   const institution = detectInstitution(text);
   const { year, defaultMonth } = detectYearMonth(text);
 
-  const lines = text.split('\n');
+  // ── Pre-process: OCA PDF extraction wraps amounts across lines in two ways ───
+  // (a) Large amount (>=1000): leading digit(s) at end of description line,
+  //     continuation ".DDD,DD" on the NEXT line.
+  //     e.g. "   8/ 2  29  GEANT    4\n.547,79..." → "...GEANT    4.547,79..."
+  // (b) Any amount: next line contains ONLY the amount (description line ends
+  //     with spaces or an installment fraction like "2/ 6").
+  //     e.g. "   17/ 1  45  MCDONALDS    \n 468,00" → "...MCDONALDS    468,00"
+  //     e.g. "   19/12  45  MERPAGO*ONLY  2/ 6\n 452,83" → "...2/ 6  452,83"
+  const rawLines = text.split('\n');
+  const lines: string[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const cur = rawLines[i];
+    const nxt = rawLines[i + 1] ?? '';
+
+    // Case (a): line ends with 1-3 digits, next line starts with .DDD,DD
+    if (/\d{1,3}\s*$/.test(cur) && /^\s*\.\d{3},\d{1,2}/.test(nxt)) {
+      lines.push(cur.trimEnd() + nxt.trim());
+      i++;
+      continue;
+    }
+
+    lines.push(cur);
+  }
+
   const results: ParsedTx[] = [];
 
-  // Main transaction line pattern:
-  // leading spaces + DD/[space]M + code (2 digits) + description + optional installments + amount
-  // Examples:
-  //      5/11  11  VETERINARIA                                                        490,00
-  //      6/ 9  11  METRAJE                                   3/ 4                     330,00
+  // Main transaction line pattern (amount on same line):
+  // leading spaces + DD/MM + card-code + description + optional installments + amount
+  // Examples (after pre-processing):
+  //      5/11  11  VETERINARIA                                          490,00
+  //      6/ 9  11  METRAJE                             3/ 4             330,00
   //     14/11  11  NETFLIX.COM                                           17,99
   const txRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+\d{1,3}\s{1,4}(.+?)\s{2,}(?:(\d{1,2})\s*\/\s*(\d{1,2})\s+)?([\d.,]+)\s*$/;
 
-  // Skip noise descriptions (tested against trimmed description, not raw line)
-  // Note: /^\s{0,3}\S/ was removed — it matched *every* trimmed description
+  // Transaction header line where amount is on the NEXT line (case b above).
+  // These end with description or installment fraction, no trailing amount.
+  const txHeaderOnlyRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+\d{1,3}\s{1,4}(.+?)(?:\s{2,}(\d{1,2})\s*\/\s*(\d{1,2}))?\s*$/;
+
+  // "Amount-only" next line: optional whitespace, then just a number (possibly negative)
+  const AMOUNT_ONLY_LINE = /^\s*(-?[\d.,]+)\s*$/;
+
+  // Skip noise descriptions
   const SKIP_PATTERNS = [
     /reducción/i, /comis\./i, /cuota.*participación/i,
-    /US Dollar/i, /Uruguayan Peso/i,
+    /US Dollar/i, /Uruguayan Peso/i, /su\s+pago/i,
   ];
 
   const USD_LINE = /US\s*Dollar\s+([\d.,]+)/i;
@@ -303,25 +332,47 @@ function parseOCAStatement(text: string): ParsedTx[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const match = txRegex.exec(line);
-    if (!match) continue;
 
-    const [, dayStr, monthStr, rawDesc, instCurStr, instTotStr, rawAmount] = match;
+    let dayStr!: string, monthStr!: string, rawDesc!: string;
+    let instCurStr: string | undefined, instTotStr: string | undefined;
+    let rawAmount!: string;
+    let amountFromNextLine = false;
+
+    const match = txRegex.exec(line);
+    if (match) {
+      [, dayStr, monthStr, rawDesc, instCurStr, instTotStr, rawAmount] = match;
+    } else {
+      // Try header-only match: amount expected on next line (case b)
+      const hMatch = txHeaderOnlyRegex.exec(line);
+      if (!hMatch) continue;
+
+      const nxt = lines[i + 1] ?? '';
+      const amtMatch = AMOUNT_ONLY_LINE.exec(nxt);
+      // Skip if no amount line found, or amount is negative (discount / payment)
+      if (!amtMatch || amtMatch[1].startsWith('-')) continue;
+
+      [, dayStr, monthStr, rawDesc, instCurStr, instTotStr] = hMatch;
+      rawAmount = amtMatch[1];
+      amountFromNextLine = true;
+    }
 
     const day = parseInt(dayStr);
     let month = parseInt(monthStr);
-    // OCA shows transaction month, which may differ from statement month
     if (month < 1 || month > 12) month = defaultMonth;
-    // Adjust year if month > defaultMonth (previous year's transactions in Jan statement etc.)
     let txYear = year;
     if (month > defaultMonth) txYear = year - 1;
 
     const dateStr = `${txYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const description = rawDesc.trim().replace(/\s+/g, ' ');
 
-    // Skip noise lines
-    if (SKIP_PATTERNS.some((p) => p.test(description))) continue;
-    if (description.length < 2) continue;
+    if (SKIP_PATTERNS.some((p) => p.test(description))) {
+      if (amountFromNextLine) i++; // consume the amount line
+      continue;
+    }
+    if (description.length < 2) {
+      if (amountFromNextLine) i++;
+      continue;
+    }
 
     const installmentCurrent = instCurStr ? parseInt(instCurStr) : null;
     const installmentTotal = instTotStr ? parseInt(instTotStr) : null;
@@ -329,24 +380,26 @@ function parseOCAStatement(text: string): ParsedTx[] {
     let amount = parseMonto(rawAmount);
     let currency: 'UYU' | 'USD' = 'UYU';
 
-    // Look ahead for sub-line (USD or Peso clarification)
-    const next1 = lines[i + 1] ?? '';
-    const next2 = lines[i + 2] ?? '';
+    // Look ahead for USD/UYU sub-line clarification (e.g. UBER, CLICKUP)
+    const lookBase = amountFromNextLine ? i + 2 : i + 1;
+    const next1 = lines[lookBase] ?? '';
+    const next2 = lines[lookBase + 1] ?? '';
 
     const usdMatch = USD_LINE.exec(next1) || USD_LINE.exec(next2);
     const uyuMatch = UYU_LINE.exec(next1) || UYU_LINE.exec(next2);
 
     if (uyuMatch) {
-      // App charged in USD but UYU sub-line shows the actual peso amount (e.g. Uber)
       amount = parseMonto(uyuMatch[1]);
       currency = 'UYU';
     } else if (usdMatch) {
-      // The main line amount was already USD
       amount = parseMonto(usdMatch[1]);
       currency = 'USD';
     }
 
-    if (amount <= 0) continue;
+    if (amount <= 0) {
+      if (amountFromNextLine) i++;
+      continue;
+    }
 
     results.push({
       date: dateStr,
@@ -361,10 +414,14 @@ function parseOCAStatement(text: string): ParsedTx[] {
       categoryHint: guessMerchantCategory(description),
       categoryId: null,
     });
+
+    // Advance past the amount-only continuation line
+    if (amountFromNextLine) i++;
   }
 
   // ── Secondary pass: recargos, intereses y cargos sin fecha ──────────────────
-  // These appear as floating lines in OCA statements without the DD/MM date prefix
+  // These appear as floating lines in OCA statements without the DD/MM date prefix.
+  // After pre-processing (case a), large-amount lines are already joined.
   const chargeRegex = /^\s{2,}((?:RECARGO|INTER[EÉ]S|CARGO\s+(?:FINANC|ADMIN|SERVIC)|COMISI[OÓ]N|IVA\s+S\/)[\w\s.,()/-]{0,60}?)\s{3,}([\d.,]+)\s*$/i;
   const statementDateStr = `${year}-${String(defaultMonth).padStart(2, '0')}-01`;
   for (const line of lines) {
@@ -372,7 +429,7 @@ function parseOCAStatement(text: string): ParsedTx[] {
     if (!mc) continue;
     const chargeDesc = mc[1].trim().replace(/\s+/g, ' ');
     const chargeAmount = parseMonto(mc[2]);
-    if (chargeAmount <= 0 || chargeAmount > 50_000_000) continue; // skip impossible values
+    if (chargeAmount <= 0 || chargeAmount > 50_000_000) continue;
     results.push({
       date: statementDateStr,
       description: chargeDesc,
