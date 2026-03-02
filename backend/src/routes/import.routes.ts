@@ -258,11 +258,11 @@ function parseOCAStatement(text: string): ParsedTx[] {
   //     14/11  11  NETFLIX.COM                                           17,99
   const txRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+\d{1,3}\s{1,4}(.+?)\s{2,}(?:(\d{1,2})\s*\/\s*(\d{1,2})\s+)?([\d.,]+)\s*$/;
 
-  // Skip lines: "Reducción IVA", "Comis.", header lines, empty continuation
+  // Skip noise descriptions (tested against trimmed description, not raw line)
+  // Note: /^\s{0,3}\S/ was removed — it matched *every* trimmed description
   const SKIP_PATTERNS = [
     /reducción/i, /comis\./i, /cuota.*participación/i,
     /US Dollar/i, /Uruguayan Peso/i,
-    /^\s{0,3}\S/, // lines that start with no indent (headers)
   ];
 
   const USD_LINE = /US\s*Dollar\s+([\d.,]+)/i;
