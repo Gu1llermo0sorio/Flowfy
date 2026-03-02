@@ -80,7 +80,7 @@ export default function TopNav() {
 
         {/* Logo */}
         <NavLink to="/" className="flex-shrink-0 mr-2">
-          <FlowfyLogo className="h-7 w-auto" />
+          <FlowfyLogo className="h-6 w-auto" />
         </NavLink>
 
         {/* Desktop Nav Links */}
