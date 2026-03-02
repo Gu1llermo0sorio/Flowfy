@@ -424,34 +424,71 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
               </div>
 
               {/* Statement total validation */}
-              {pdfPreview.statementTotal && (
-                (() => {
-                  const uyuTotal   = pdfRows.filter((r) => r.keep && r.currency !== 'USD').reduce((s, r) => s + r.amount, 0);
-                  const usdTotal   = pdfRows.filter((r) => r.keep && r.currency === 'USD').reduce((s, r) => s + r.amount, 0);
-                  const diff       = Math.abs(uyuTotal - pdfPreview.statementTotal);
-                  const pct        = pdfPreview.statementTotal > 0 ? diff / pdfPreview.statementTotal : 0;
-                  const isClose    = pct < 0.15;
+              {(() => {
+                const uyuTotal = pdfRows.filter((r) => r.keep && r.currency !== 'USD').reduce((s, r) => s + r.amount, 0);
+                const usdTotal = pdfRows.filter((r) => r.keep && r.currency === 'USD').reduce((s, r) => s + r.amount, 0);
+                const usdCount = pdfRows.filter((r) => r.keep && r.currency === 'USD').length;
+
+                if (!pdfPreview.statementTotal) {
+                  // No statement total extracted — just show what was parsed
                   return (
-                    <div className={`text-xs px-3 py-2 rounded-lg space-y-0.5 ${isClose ? 'bg-positive-500/10 text-positive-400' : 'bg-surface-700/60 text-surface-300'}`}>
+                    <div className="text-xs px-3 py-2 rounded-lg bg-surface-700/60 text-surface-400">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">Total documento:</span>
-                        <span className="font-mono">{formatCurrency(pdfPreview.statementTotal)}</span>
-                        <span className="text-surface-500">·</span>
-                        <span className="font-medium">Seleccionadas:</span>
-                        <span className="font-mono">{formatCurrency(uyuTotal)}</span>
-                        {usdTotal > 0 && (
-                          <span className="font-mono text-amber-400">+ U$S {(usdTotal / 100).toFixed(2)}</span>
+                        <span className="font-medium text-surface-300">Total interpretado:</span>
+                        <span className="font-mono text-surface-200">{formatCurrency(uyuTotal)}</span>
+                        {usdCount > 0 && (
+                          <span className="font-mono text-amber-400">+ U$S {(usdTotal / 100).toFixed(2)} ({usdCount} tx)</span>
                         )}
+                        <span className="text-surface-500 text-[11px]">(no se encontró total declarado en el PDF)</span>
                       </div>
-                      {!isClose && (
-                        <p className="text-surface-500 text-[11px]">
-                          La diferencia es normal: el PDF incluye intereses, cargos y cuotas de meses anteriores que no aparecen como filas individuales.
-                        </p>
-                      )}
                     </div>
                   );
-                })()
-              )}
+                }
+
+                const diff = Math.abs(uyuTotal - pdfPreview.statementTotal);
+                const pct = pdfPreview.statementTotal > 0 ? diff / pdfPreview.statementTotal : 0;
+                const pctStr = (pct * 100).toFixed(1) + '%';
+                const isGreen = pct <= 0.05;
+                const isAmber = pct > 0.05 && pct <= 0.20;
+                const isRed = pct > 0.20;
+
+                const containerClass = isGreen
+                  ? 'bg-positive-500/10 text-positive-400 border border-positive-500/20'
+                  : isAmber
+                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                  : 'bg-danger-500/10 text-danger-400 border border-danger-500/20';
+
+                return (
+                  <div className={`text-xs px-3 py-2 rounded-lg space-y-1 ${containerClass}`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isGreen && <span className="font-semibold">✓</span>}
+                      {isAmber && <span className="font-semibold">⚠</span>}
+                      {isRed && <span className="font-semibold">✕</span>}
+                      <span className="font-medium">Total compras:</span>
+                      <span className="font-mono">{formatCurrency(pdfPreview.statementTotal)}</span>
+                      <span className="opacity-50">·</span>
+                      <span className="font-medium">Interpretado:</span>
+                      <span className="font-mono">{formatCurrency(uyuTotal)}</span>
+                      {usdCount > 0 && (
+                        <span className="font-mono text-amber-400">+ U$S {(usdTotal / 100).toFixed(2)} ({usdCount})</span>
+                      )}
+                      {!isGreen && (
+                        <span className="opacity-70">({pctStr})</span>
+                      )}
+                    </div>
+                    {isAmber && (
+                      <p className="text-[11px] opacity-70">
+                        Diferencia del {pctStr} — puede incluir intereses o cargos que no aparecen como filas individuales.
+                      </p>
+                    )}
+                    {isRed && (
+                      <p className="text-[11px] opacity-80 font-medium">
+                        Diferencia del {pctStr} — podría haber líneas del PDF que no se interpretaron correctamente. Revisá las filas.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Duplicate warning */}
               {dupeCount > 0 && (

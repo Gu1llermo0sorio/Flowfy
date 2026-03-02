@@ -487,15 +487,42 @@ function parseOCAStatement(text: string): ParsedTx[] {
 
 /** Extract the statement total from the OCA PDF header area */
 function extractStatementTotal(text: string): number | null {
-  // OCA header line 2 pattern: "7.467 M  200.000,00  87.111,94  U$S 113,41  $ 118.024,0"
-  // We want the last large UYU amount (total del resumen in pesos)
-  const headerLine = text.slice(0, 2000);
-  // Match pattern: $ NUMBER,NUMBER at end of header (the total)
-  const match = /\$\s*([\d.]+,[\d]{1,2})/.exec(headerLine.replace(/\n/g, ' '));
-  if (match) {
-    const val = parseMonto(match[1]);
-    if (val > 100000) return val; // avoid small amounts (minimum payment)
+  // Pre-join wrapped lines (same logic as parseOCAStatement)
+  // OCA wraps large amounts: "142" on one line, ".105,20" on next
+  const rawLines = text.split('\n');
+  const joined: string[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const cur = rawLines[i];
+    const nxt = rawLines[i + 1] ?? '';
+    if (/\d{1,3}\s*$/.test(cur) && /^\s*\.\d{3},\d{1,2}/.test(nxt)) {
+      joined.push(cur.trimEnd() + nxt.trim());
+      i++;
+    } else {
+      joined.push(cur);
+    }
   }
+  const processed = joined.join('\n');
+
+  // 1. Primary: search for "TOTAL COMPRAS DEL MES" — the monthly purchases total (UYU part)
+  //    Format: "TOTAL COMPRAS DEL MES   154,42   142.105,20"
+  //    (first number = USD, second = UYU total)
+  const totalComprasMatch = /TOTAL\s+COMPRAS\s+DEL\s+MES\s+[\d.,]+\s+([\d.,]+)/i.exec(processed);
+  if (totalComprasMatch) {
+    const val = parseMonto(totalComprasMatch[1]);
+    if (val > 10000) return val; // must be at least $100
+  }
+
+  // 2. Fallback: $ NNN.NNN,NN pattern in first 3000 chars (account balance from header)
+  //    Also handles split: "$ 1\n33.166,0" → after join → "$ 133.166,0"
+  const headerText = processed.slice(0, 3000).replace(/\n/g, ' ')
+    // Rejoin any remaining splits: "$ 1 33.166,0" → "$ 133.166,0"
+    .replace(/(\$\s*\d{1,3})\s+(\d)/g, '$1$2');
+  const headerMatch = /\$\s*([\d.]+,[\d]{1,2})/.exec(headerText);
+  if (headerMatch) {
+    const val = parseMonto(headerMatch[1]);
+    if (val > 10000 && val < 100_000_000) return val; // sanity: $100 to $1M
+  }
+
   return null;
 }
 
