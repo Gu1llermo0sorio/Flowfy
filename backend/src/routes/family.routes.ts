@@ -190,32 +190,65 @@ familyRouter.delete('/invitations/:token', async (req: AuthRequest, res, next) =
   }
 });
 
-// ── DELETE /api/family/data — wipe all financial data (owner only) ────────────
+// ── DELETE /api/family/data — wipe selected financial data (owner only) ────────────
 familyRouter.delete('/data', async (req: AuthRequest, res, next) => {
   try {
-    // Only owner can clear data
     const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { role: true } });
     if (user?.role !== 'owner') throw createError('Solo el propietario puede limpiar los datos', 403, 'FORBIDDEN');
 
     const fid = req.familyId!;
+    const targets: {
+      transactionsExpense?: boolean;
+      transactionsIncome?: boolean;
+      budgets?: boolean;
+      goals?: boolean;
+      resetXp?: boolean;
+    } = req.body?.targets ?? {};
 
-    // Delete everything financial — keep categories, users, family config, invitations
-    const [txDel, budDel, goalDel, chalDel, recDel] = await prisma.$transaction([
-      prisma.transaction.deleteMany({ where: { familyId: fid } }),
-      prisma.budget.deleteMany({ where: { familyId: fid } }),
-      prisma.goal.deleteMany({ where: { familyId: fid } }),
-      prisma.challenge.deleteMany({ where: { familyId: fid } }),
-      prisma.recommendation.deleteMany({ where: { familyId: fid } }),
-    ]);
+    if (!Object.values(targets).some(Boolean)) {
+      throw createError('Seleccioná al menos un tipo de dato a limpiar', 400, 'NOTHING_SELECTED');
+    }
 
-    // Reset XP + streaks for all members
-    await prisma.user.updateMany({
-      where: { familyId: fid },
-      data: { xp: 0, level: 1, streakDays: 0 },
+    let txExpDel = 0, txIncDel = 0, budDel = 0, goalDel = 0;
+
+    if (targets.transactionsExpense) {
+      const r = await prisma.transaction.deleteMany({ where: { familyId: fid, type: 'expense' } });
+      txExpDel = r.count;
+    }
+    if (targets.transactionsIncome) {
+      const r = await prisma.transaction.deleteMany({ where: { familyId: fid, type: 'income' } });
+      txIncDel = r.count;
+    }
+    if (targets.budgets) {
+      const r = await prisma.budget.deleteMany({ where: { familyId: fid } });
+      budDel = r.count;
+    }
+    if (targets.goals) {
+      const r = await prisma.goal.deleteMany({ where: { familyId: fid } });
+      goalDel = r.count;
+    }
+    if (targets.resetXp) {
+      await prisma.user.updateMany({
+        where: { familyId: fid },
+        data: { xp: 0, level: 1, streakDays: 0 },
+      });
+      // Also wipe challenges/recommendations when resetting XP
+      await prisma.challenge.deleteMany({ where: { familyId: fid } });
+      await prisma.recommendation.deleteMany({ where: { familyId: fid } });
+    }
+
+    const total = txExpDel + txIncDel + budDel + goalDel;
+    res.json({
+      success: true,
+      data: {
+        deleted: total,
+        transactionsExpense: txExpDel,
+        transactionsIncome: txIncDel,
+        budgets: budDel,
+        goals: goalDel,
+        xpReset: !!targets.resetXp,
+      },
     });
-
-    const total = txDel.count + budDel.count + goalDel.count + chalDel.count + recDel.count;
-    res.json({ success: true, data: { deleted: total, transactions: txDel.count, budgets: budDel.count, goals: goalDel.count } });
   } catch (err) {
     next(err);
   }

@@ -8,69 +8,140 @@ import { useFamilyMembers } from '../hooks/useFamily';
 import { apiClient } from '../lib/apiClient';
 import { useUIStore } from '../stores/uiStore';
 
-/* ─── Clear-Data Confirmation Modal ─────────────────────────────────────────── */
+/* ─── Types ──────────────────────────────────────────────────────────────────── */
+interface ClearTargets {
+  transactionsExpense: boolean;
+  transactionsIncome: boolean;
+  budgets: boolean;
+  goals: boolean;
+  resetXp: boolean;
+}
+
+const DEFAULT_TARGETS: ClearTargets = {
+  transactionsExpense: false,
+  transactionsIncome: false,
+  budgets: false,
+  goals: false,
+  resetXp: false,
+};
+
+const OPTION_LABELS: { key: keyof ClearTargets; label: string; sublabel: string; danger: 'high' | 'medium' }[] = [
+  { key: 'transactionsExpense', label: 'Gastos', sublabel: 'Todas las transacciones de tipo gasto', danger: 'high' },
+  { key: 'transactionsIncome', label: 'Ingresos', sublabel: 'Todas las transacciones de tipo ingreso', danger: 'high' },
+  { key: 'budgets', label: 'Presupuestos', sublabel: 'Todos los presupuestos configurados', danger: 'medium' },
+  { key: 'goals', label: 'Metas', sublabel: 'Todas las metas de ahorro', danger: 'medium' },
+  { key: 'resetXp', label: 'XP y nivel', sublabel: 'Resetea XP, nivel y racha de todos los miembros', danger: 'medium' },
+];
+
+/* ─── Clear-Data Modal ───────────────────────────────────────────────────────── */
 function ClearDataModal({ onClose, onConfirm, loading }: {
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (targets: ClearTargets) => void;
   loading: boolean;
 }) {
+  const [targets, setTargets] = useState<ClearTargets>(DEFAULT_TARGETS);
   const [typed, setTyped] = useState('');
   const CONFIRM_WORD = 'LIMPIAR';
+
+  const anySelected = Object.values(targets).some(Boolean);
+
+  const toggle = (key: keyof ClearTargets) =>
+    setTargets((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const selectAll = () =>
+    setTargets({ transactionsExpense: true, transactionsIncome: true, budgets: true, goals: true, resetXp: true });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="card p-6 max-w-sm w-full space-y-5 border border-danger-500/40">
+
+        {/* Header */}
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-danger-500/20 flex items-center justify-center flex-shrink-0">
             <ShieldAlert className="w-6 h-6 text-danger-400" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">¿Limpiar todos los datos?</h2>
+            <h2 className="text-lg font-bold text-white">Limpiar datos</h2>
             <p className="text-xs text-danger-400 font-medium">Esta acción no se puede deshacer</p>
           </div>
         </div>
 
-        <div className="bg-danger-900/30 border border-danger-500/30 rounded-xl p-4 space-y-2 text-sm text-danger-300">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span>Se eliminarán <strong>todas las transacciones</strong></span>
-          </div>
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span>Se eliminarán todos los <strong>presupuestos y metas</strong></span>
-          </div>
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span>Se resetea el <strong>XP y nivel</strong> de todos los miembros</span>
-          </div>
-          <p className="text-xs text-surface-500 pl-6">Las categorías y miembros se conservan.</p>
-        </div>
-
+        {/* Selector de qué limpiar */}
         <div className="space-y-1.5">
-          <p className="text-xs text-surface-400">
-            Escribí <span className="font-mono font-bold text-danger-400">{CONFIRM_WORD}</span> para confirmar:
-          </p>
-          <input
-            type="text"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value.toUpperCase())}
-            className="input-field w-full text-center font-mono tracking-widest"
-            placeholder={CONFIRM_WORD}
-            autoFocus
-          />
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-surface-300 uppercase tracking-wide">¿Qué querés eliminar?</p>
+            <button onClick={selectAll} className="text-xs text-danger-400 hover:text-danger-300 transition-colors">
+              Seleccionar todo
+            </button>
+          </div>
+          {OPTION_LABELS.map(({ key, label, sublabel, danger }) => (
+            <label
+              key={key}
+              className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                targets[key]
+                  ? danger === 'high'
+                    ? 'border-danger-500/50 bg-danger-500/10'
+                    : 'border-warning-500/50 bg-warning-500/10'
+                  : 'border-surface-700 hover:border-surface-600'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={targets[key]}
+                onChange={() => toggle(key)}
+                className="mt-0.5 w-4 h-4 rounded border-surface-600 bg-surface-800 text-danger-500 cursor-pointer flex-shrink-0"
+              />
+              <div className="min-w-0">
+                <p className={`text-sm font-medium ${targets[key] ? (danger === 'high' ? 'text-danger-300' : 'text-warning-300') : 'text-surface-200'}`}>
+                  {label}
+                </p>
+                <p className="text-xs text-surface-500 leading-tight">{sublabel}</p>
+              </div>
+            </label>
+          ))}
         </div>
 
+        {/* Warning si hay algo seleccionado */}
+        {anySelected && (
+          <div className="flex items-start gap-2 text-xs px-3 py-2.5 rounded-lg bg-danger-900/30 border border-danger-500/20 text-danger-300">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            <span>
+              Se eliminarán permanentemente:{' '}
+              <strong>{OPTION_LABELS.filter((o) => targets[o.key]).map((o) => o.label).join(', ')}</strong>.
+              Las categorías y usuarios se conservan.
+            </span>
+          </div>
+        )}
+
+        {/* Confirmación manual */}
+        {anySelected && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-surface-400">
+              Escribí <span className="font-mono font-bold text-danger-400">{CONFIRM_WORD}</span> para confirmar:
+            </p>
+            <input
+              type="text"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value.toUpperCase())}
+              className="input-field w-full text-center font-mono tracking-widest"
+              placeholder={CONFIRM_WORD}
+              autoFocus
+            />
+          </div>
+        )}
+
+        {/* Botones */}
         <div className="flex gap-3">
           <button onClick={onClose} disabled={loading} className="flex-1 btn-ghost py-2.5 text-sm">
             Cancelar
           </button>
           <button
-            onClick={onConfirm}
-            disabled={typed !== CONFIRM_WORD || loading}
+            onClick={() => onConfirm(targets)}
+            disabled={!anySelected || typed !== CONFIRM_WORD || loading}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-xl bg-danger-600 hover:bg-danger-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-            Limpiar todo
+            Limpiar
           </button>
         </div>
       </div>
@@ -101,14 +172,23 @@ export default function ProfilePage() {
   const { data: members = [], isLoading: loadingMembers } = useFamilyMembers();
 
   const clearDataMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await apiClient.delete<{ success: boolean; data: { deleted: number; transactions: number } }>('/family/data');
+    mutationFn: async (targets: ClearTargets) => {
+      const { data } = await apiClient.delete<{
+        success: boolean;
+        data: { deleted: number; transactionsExpense: number; transactionsIncome: number; budgets: number; goals: number; xpReset: boolean };
+      }>('/family/data', { data: { targets } });
       return data.data;
     },
     onSuccess: (result) => {
       qc.invalidateQueries();
       setShowClearModal(false);
-      addToast({ type: 'success', message: `Datos eliminados — ${result.transactions} transacciones borradas.` });
+      const parts: string[] = [];
+      if (result.transactionsExpense > 0) parts.push(`${result.transactionsExpense} gastos`);
+      if (result.transactionsIncome > 0) parts.push(`${result.transactionsIncome} ingresos`);
+      if (result.budgets > 0) parts.push(`${result.budgets} presupuestos`);
+      if (result.goals > 0) parts.push(`${result.goals} metas`);
+      if (result.xpReset) parts.push('XP reseteado');
+      addToast({ type: 'success', message: `Limpieza completa${parts.length ? ': ' + parts.join(', ') : ''}.` });
     },
     onError: () => addToast({ type: 'error', message: 'No se pudo limpiar. Solo el propietario puede hacerlo.' }),
   });
@@ -226,7 +306,7 @@ export default function ProfilePage() {
       {showClearModal && (
         <ClearDataModal
           onClose={() => setShowClearModal(false)}
-          onConfirm={() => clearDataMutation.mutate()}
+          onConfirm={(targets) => clearDataMutation.mutate(targets)}
           loading={clearDataMutation.isPending}
         />
       )}
