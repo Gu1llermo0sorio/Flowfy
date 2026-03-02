@@ -1,11 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, Plus } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, Plus, Unlock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiClient } from '../lib/apiClient';
 import { formatCurrency, getMonthName } from '../lib/formatters';
 import { useAuthStore } from '../stores/authStore';
 import type { MonthlySummary, Transaction } from '../types';
+
+// ------------------------------------------------------------------ types
+interface LiberationItem {
+  description: string;
+  amountUYU: number;
+  currency: string;
+  categoryName: string;
+  categoryIcon: string;
+  current: number;
+  total: number;
+  remainingMonths: number;
+  freeDate: string;
+}
 
 // ------------------------------------------------------------------ helpers
 function StatCard({
@@ -43,6 +56,16 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const now = new Date();
+
+  // Installments liberation query
+  const { data: liberationData } = useQuery({
+    queryKey: ['installments-liberation'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ success: boolean; data: { liberation: LiberationItem[]; totalMonthlyLiberated: number } }>('/import/installments-liberation?months=3');
+      return data.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
 
@@ -296,6 +319,49 @@ export default function Dashboard() {
           ))
         )}
       </div>
+
+      {/* Installments liberation widget */}
+      {liberationData && liberationData.liberation.length > 0 && (
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Unlock className="w-4 h-4 text-positive-400" />
+              <h2 className="font-semibold text-surface-50">Cuotas que se liberan</h2>
+            </div>
+            {liberationData.totalMonthlyLiberated > 0 && (
+              <span className="text-xs bg-positive-500/15 text-positive-400 px-2 py-0.5 rounded-full font-medium">
+                +{formatCurrency(liberationData.totalMonthlyLiberated, 'UYU')} este mes
+              </span>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            {liberationData.liberation.map((item, i) => {
+              const freeDateLabel = (() => {
+                const d = new Date(item.freeDate + 'T12:00:00');
+                return `${getMonthName(d.getMonth() + 1)} ${d.getFullYear()}`;
+              })();
+              return (
+                <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-surface-700/30 transition-colors">
+                  <span className="text-base flex-shrink-0">{item.categoryIcon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-surface-100 truncate">{item.description}</p>
+                    <p className="text-[10px] text-surface-500">
+                      cuota {item.current}/{item.total}
+                      {item.remainingMonths === 0
+                        ? <span className="text-positive-400 ml-1 font-medium">· última cuota</span>
+                        : <span className="ml-1">· libera en {freeDateLabel}</span>}
+                    </p>
+                  </div>
+                  <span className="font-mono text-xs font-semibold text-surface-300 flex-shrink-0">
+                    {formatCurrency(item.amountUYU, 'UYU')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-surface-500 text-center">Solo cuotas de tarjeta importadas · próximos 3 meses</p>
+        </div>
+      )}
 
       {/* XP progress */}
       {user && (

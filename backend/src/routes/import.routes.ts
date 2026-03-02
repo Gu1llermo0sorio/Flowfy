@@ -205,6 +205,29 @@ interface ParsedTx {
   installmentTotal: number | null;
   institution: string;
   keep: boolean;
+  categoryHint: string | null;  // nameEs of matched category
+  categoryId: string | null;    // resolved after DB lookup
+}
+
+// Map merchant keywords → category nameEs
+const MERCHANT_CATEGORY_HINTS: Array<{ pattern: RegExp; nameEs: string }> = [
+  { pattern: /disco\b|devoto|tienda\s*inglesa|g[eé]ant|tata\b|multiahorro|fresh\s*market|carestino|super\s*mercado/i, nameEs: 'Comida y Restaurantes' },
+  { pattern: /pedidosya|rappi|pizza\s*hut|mcdonald|burger|subway|kfc/i, nameEs: 'Comida y Restaurantes' },
+  { pattern: /farmashop|farmacity/i, nameEs: 'Ropa y Personal' },
+  { pattern: /\buber\b|cabify/i, nameEs: 'Transporte' },
+  { pattern: /ancap|shell|petrobr[aá]s|axion\b/i, nameEs: 'Transporte' },
+  { pattern: /netflix|spotify|youtube\s*premium|disney[+\s]|hbo\b|prime\s*video|apple\s*tv|paramount|deezer|twitch/i, nameEs: 'Entretenimiento' },
+  { pattern: /redtickets|tickantel|cine\b|cinema|teatro\b/i, nameEs: 'Entretenimiento' },
+  { pattern: /veterinaria/i, nameEs: 'Mascotas' },
+  { pattern: /zara\b|h\s*[&y]\s*m\b|carter[\s']|lojas\s*renner|renner\b|metraje|divino\b|bas\s+basic|parisien|mango\b|bershka/i, nameEs: 'Ropa y Personal' },
+  { pattern: /antel|ost\b|ute\b|internet|vodafone|claro\b|movistar/i, nameEs: 'Hogar y Vivienda' },
+];
+
+function guessMerchantCategory(description: string): string | null {
+  for (const { pattern, nameEs } of MERCHANT_CATEGORY_HINTS) {
+    if (pattern.test(description)) return nameEs;
+  }
+  return null;
 }
 
 function detectInstitution(text: string): string {
@@ -325,10 +348,26 @@ function parseOCAStatement(text: string): ParsedTx[] {
       installmentTotal,
       institution,
       keep: true,
+      categoryHint: guessMerchantCategory(description),
+      categoryId: null,
     });
   }
 
   return results;
+}
+
+/** Extract the statement total from the OCA PDF header area */
+function extractStatementTotal(text: string): number | null {
+  // OCA header line 2 pattern: "7.467 M  200.000,00  87.111,94  U$S 113,41  $ 118.024,0"
+  // We want the last large UYU amount (total del resumen in pesos)
+  const headerLine = text.slice(0, 2000);
+  // Match pattern: $ NUMBER,NUMBER at end of header (the total)
+  const match = /\$\s*([\d.]+,[\d]{1,2})/.exec(headerLine.replace(/\n/g, ' '));
+  if (match) {
+    const val = parseMonto(match[1]);
+    if (val > 100000) return val; // avoid small amounts (minimum payment)
+  }
+  return null;
 }
 
 // ── POST /api/import/pdf-preview — parse PDF bank/card statement ──────────────
@@ -347,11 +386,24 @@ importRouter.post('/pdf-preview', pdfUpload.single('file'), async (req: AuthRequ
 
     // Try regex parser first (fast, no AI cost, works for OCA and similar formats)
     const regexRows = parseOCAStatement(text);
+    const statementTotal = extractStatementTotal(text);
+
+    // Resolve categoryHint → categoryId using the user's categories in DB
+    const userCategories = await prisma.category.findMany({
+      where: { familyId: req.familyId! },
+      select: { id: true, nameEs: true },
+    });
+    const resolvedRows = regexRows.map((row) => ({
+      ...row,
+      categoryId: row.categoryHint
+        ? (userCategories.find((c: { id: string; nameEs: string }) => c.nameEs === row.categoryHint)?.id ?? null)
+        : null,
+    }));
 
     // If regex found enough transactions, use them; otherwise try AI
-    if (regexRows.length >= 3 || !process.env.ANTHROPIC_API_KEY) {
-      const institution = regexRows[0]?.institution || detectInstitution(text);
-      res.json({ success: true, data: { rows: regexRows, totalRows: regexRows.length, institution, parsedBy: 'regex' } });
+    if (resolvedRows.length >= 3 || !process.env.ANTHROPIC_API_KEY) {
+      const institution = resolvedRows[0]?.institution || detectInstitution(text);
+      res.json({ success: true, data: { rows: resolvedRows, totalRows: resolvedRows.length, institution, parsedBy: 'regex', statementTotal } });
       return;
     }
 
@@ -415,6 +467,8 @@ Responde SOLO con el JSON array.`,
         installmentTotal: t.installmentTotal ?? null,
         institution: t.institution || 'credit_card',
         keep: true,
+        categoryHint: guessMerchantCategory(t.description),
+        categoryId: null,
       }));
 
     const institution = rows[0]?.institution || 'credit_card';
@@ -434,7 +488,7 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
         description: string;
         amount: number;
         type: 'income' | 'expense';
-        categoryId?: string;
+        categoryId?: string | null;
         currency?: string;
         installmentCurrent?: number | null;
         installmentTotal?: number | null;
@@ -446,6 +500,10 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
     if (!rows?.length) throw createError('No hay filas para importar', 400, 'NO_ROWS');
     if (rows.length > 500) throw createError('Máximo 500 filas por importación de PDF', 400, 'TOO_MANY_ROWS');
     if (!defaultCategoryId) throw createError('Categoría por defecto requerida', 400, 'NO_CATEGORY');
+
+    // Generate a batch ID for the whole import — allows undoing the whole batch
+    const { randomUUID } = await import('crypto');
+    const importBatchId = randomUUID();
 
     const rate = await prisma.exchangeRate.findFirst({
       where: { fromCurrency: 'USD', toCurrency: 'UYU' },
@@ -477,6 +535,7 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
             familyId: req.familyId!,
             tags: [],
             importSource: 'pdf',
+            importBatchId,
             institutionId: r.institution ?? null,
             paymentMethod: 'credit',
             isOcaInstallment: (r.installmentTotal ?? 0) > 1,

@@ -121,6 +121,7 @@ model Transaction {
   isRecurring           Boolean  @default(false)
   recurringId           String?
   importSource          String?  // "manual" | "pdf" | "ocr" | "email"
+  importBatchId         String?  // groups all tx from the same import action
   institutionId         String?  // "itau" | "oca" | "other"
   isOcaInstallment      Boolean  @default(false)
   ocaTotalAmount        Int?
@@ -143,6 +144,7 @@ model Transaction {
   @@index([categoryId])
   @@index([date])
   @@index([recurringId])
+  @@index([importBatchId])
 }
 
 model RecurringTransaction {

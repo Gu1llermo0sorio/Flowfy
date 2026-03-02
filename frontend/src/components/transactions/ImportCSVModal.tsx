@@ -33,12 +33,15 @@ interface PdfRow {
   installmentTotal: number | null;
   institution: string;
   keep: boolean;
+  categoryId: string;       // '' = use default
+  categoryHint: string | null; // nameEs of auto-detected category
 }
 
 interface PdfPreviewResult {
   rows: PdfRow[];
   totalRows: number;
   institution: string;
+  statementTotal: number | null;
 }
 
 interface ImportCSVModalProps {
@@ -70,7 +73,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{ imported: number; skipped: number; batchId?: string } | null>(null);
   const [defaultCategoryId, setDefaultCategoryId] = useState('');
 
   // CSV state
@@ -80,6 +83,8 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   // PDF state
   const [pdfPreview, setPdfPreview] = useState<PdfPreviewResult | null>(null);
   const [pdfRows, setPdfRows] = useState<PdfRow[]>([]);
+  const [importBatchId, setImportBatchId] = useState<string | null>(null);
+  const [undoLoading, setUndoLoading] = useState(false);
 
   const stepLabels = mode === 'pdf' ? PDF_STEP_LABELS : CSV_STEP_LABELS;
 
@@ -137,7 +142,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setPdfPreview(data.data);
-      setPdfRows(data.data.rows.map((r) => ({ ...r, keep: true })));
+      setPdfRows(data.data.rows.map((r) => ({ ...r, keep: true, categoryId: r.categoryId ?? '', categoryHint: r.categoryHint ?? null })));
       setStep(1);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -150,13 +155,17 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   const handlePDFConfirm = async () => {
     const rowsToImport = pdfRows.filter((r) => r.keep);
     if (!rowsToImport.length) { addToast({ type: 'error', message: 'No hay transacciones seleccionadas' }); return; }
-    if (!defaultCategoryId) { addToast({ type: 'error', message: 'Seleccioná una categoría por defecto' }); return; }
+    const rowsWithoutCategory = rowsToImport.filter((r) => !r.categoryId);
+    if (rowsWithoutCategory.length > 0 && !defaultCategoryId) {
+      addToast({ type: 'error', message: `${rowsWithoutCategory.length} transacción(es) sin categoría — seleccioná una por defecto` }); return;
+    }
     setLoading(true);
     try {
-      const { data } = await apiClient.post<{ success: boolean; data: { imported: number; skipped: number } }>('/import/pdf-confirm', {
+      const { data } = await apiClient.post<{ success: boolean; data: { imported: number; skipped: number; batchId: string } }>('/import/pdf-confirm', {
         rows: rowsToImport,
-        defaultCategoryId,
+        defaultCategoryId: defaultCategoryId || undefined,
       });
+      setImportBatchId(data.data.batchId ?? null);
       setResult(data.data);
       setStep(2);
       qc.invalidateQueries({ queryKey: ['transactions'] });
@@ -366,6 +375,26 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 </div>
               </div>
 
+              {/* Statement total validation */}
+              {pdfPreview.statementTotal && (
+                (() => {
+                  const importedTotal = pdfRows.filter((r) => r.keep && r.currency === 'UYU').reduce((s, r) => s + r.amount, 0);
+                  const diff = Math.abs(importedTotal - pdfPreview.statementTotal);
+                  const pct = pdfPreview.statementTotal > 0 ? diff / pdfPreview.statementTotal : 0;
+                  const isClose = pct < 0.15;
+                  return (
+                    <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${isClose ? 'bg-positive-500/10 text-positive-400' : 'bg-warning-500/10 text-warning-400'}`}>
+                      <span className="font-medium">Total documento:</span>
+                      <span>{formatCurrency(pdfPreview.statementTotal)}</span>
+                      <span className="text-surface-500">·</span>
+                      <span className="font-medium">Suma seleccionadas:</span>
+                      <span>{formatCurrency(importedTotal)}</span>
+                      {!isClose && <span className="ml-1 opacity-70">(diferencia incluye cuotas de meses anteriores)</span>}
+                    </div>
+                  );
+                })()
+              )}
+
               {/* Select/deselect all */}
               <div className="flex items-center gap-3">
                 <button onClick={() => setPdfRows((r) => r.map((x) => ({ ...x, keep: true })))} className="text-xs text-primary-400 hover:text-primary-300">Seleccionar todo</button>
@@ -374,7 +403,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
               </div>
 
               {/* Transactions list */}
-              <div className="rounded-xl border border-surface-700 overflow-hidden max-h-72 overflow-y-auto">
+              <div className="rounded-xl border border-surface-700 overflow-hidden max-h-64 overflow-y-auto">
                 <table className="text-xs w-full">
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-surface-800 border-b border-surface-700">
@@ -382,21 +411,34 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                       <th className="text-left px-2 py-2 text-surface-400 font-medium">Fecha</th>
                       <th className="text-left px-2 py-2 text-surface-400 font-medium">Descripción</th>
                       <th className="text-left px-2 py-2 text-surface-400 font-medium">Cuotas</th>
+                      <th className="text-left px-2 py-2 text-surface-400 font-medium">Categoría</th>
                       <th className="text-right px-2 py-2 text-surface-400 font-medium">Monto</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pdfRows.map((row, i) => (
                       <tr key={i} className={`border-b border-surface-800 transition-colors ${row.keep ? 'hover:bg-surface-800/50' : 'opacity-40'}`}>
-                        <td className="px-2 py-2 text-center">
+                        <td className="px-2 py-1.5 text-center">
                           <input type="checkbox" checked={row.keep} onChange={(e) => setPdfRows((prev) => prev.map((r, idx) => idx === i ? { ...r, keep: e.target.checked } : r))} className="w-3.5 h-3.5 rounded border-surface-600 bg-surface-800 text-primary-500 cursor-pointer" />
                         </td>
-                        <td className="px-2 py-2 text-surface-400 whitespace-nowrap">{row.date}</td>
-                        <td className="px-2 py-2 text-surface-200 max-w-[160px] truncate">{row.description}</td>
-                        <td className="px-2 py-2 text-surface-500 whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-surface-400 whitespace-nowrap">{row.date}</td>
+                        <td className="px-2 py-1.5 text-surface-200 max-w-[120px] truncate" title={row.description}>{row.description}</td>
+                        <td className="px-2 py-1.5 text-surface-500 whitespace-nowrap">
                           {row.installmentTotal ? `${row.installmentCurrent}/${row.installmentTotal}` : '—'}
                         </td>
-                        <td className="px-2 py-2 text-right font-mono whitespace-nowrap">
+                        <td className="px-2 py-1.5">
+                          <select
+                            value={row.categoryId}
+                            onChange={(e) => setPdfRows((prev) => prev.map((r, idx) => idx === i ? { ...r, categoryId: e.target.value } : r))}
+                            className={`text-[10px] px-1.5 py-1 rounded-lg border max-w-[110px] bg-surface-900 focus:outline-none focus:ring-1 focus:ring-primary-500/40 ${row.categoryId ? 'border-surface-700 text-surface-200' : 'border-warning-500/50 text-surface-500'}`}
+                          >
+                            <option value="">— sin cat. —</option>
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>{c.icon} {c.nameEs}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono whitespace-nowrap">
                           <span className={row.currency === 'USD' ? 'text-amber-400' : 'text-surface-200'}>
                             {row.currency === 'USD' ? `U$S ${(row.amount / 100).toFixed(2)}` : formatCurrency(row.amount)}
                           </span>
@@ -407,28 +449,31 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 </table>
               </div>
 
-              {/* Default category */}
-              <div>
-                <label className="block text-xs font-medium text-surface-400 mb-1.5">
-                  Categoría por defecto <span className="text-surface-500">(se aplica a las que no tienen)</span>
-                </label>
-                <select
-                  value={defaultCategoryId}
-                  onChange={(e) => setDefaultCategoryId(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-xl bg-surface-800 border border-surface-700 text-surface-200 focus:outline-none focus:ring-1 focus:ring-primary-500/40"
-                >
-                  <option value="">— Seleccioná una categoría —</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.icon} {c.nameEs}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Default category (for uncategorized rows) */}
+              {pdfRows.filter((r) => r.keep && !r.categoryId).length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1.5">
+                    Categoría por defecto{' '}
+                    <span className="text-warning-400">({pdfRows.filter((r) => r.keep && !r.categoryId).length} sin categoría)</span>
+                  </label>
+                  <select
+                    value={defaultCategoryId}
+                    onChange={(e) => setDefaultCategoryId(e.target.value)}
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-surface-800 border border-surface-700 text-surface-200 focus:outline-none focus:ring-1 focus:ring-primary-500/40"
+                  >
+                    <option value="">— Seleccioná una categoría —</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.icon} {c.nameEs}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="flex gap-2 pt-1">
                 <button onClick={() => { setStep(0); setPdfPreview(null); setPdfRows([]); }} className="btn-secondary flex-1 py-2">Atrás</button>
                 <button
                   onClick={() => setStep(2)}
-                  disabled={checkedCount === 0 || !defaultCategoryId}
+                  disabled={checkedCount === 0 || (pdfRows.some((r) => r.keep && !r.categoryId) && !defaultCategoryId)}
                   className="btn-primary flex-1 py-2"
                 >
                   Continuar ({checkedCount})
@@ -482,7 +527,32 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                   {result.skipped > 0 && <>, <strong className="text-warning-500">{result.skipped}</strong> duplicados ignorados</>}
                 </p>
               </div>
-              <button onClick={onClose} className="btn-primary px-6 py-2">Listo</button>
+              <div className="flex gap-2">
+                <button onClick={onClose} className="btn-primary flex-1 py-2">Listo</button>
+                {importBatchId && (
+                  <button
+                    onClick={async () => {
+                      setUndoLoading(true);
+                      try {
+                        await apiClient.delete(`/import/batch/${importBatchId}`);
+                        qc.invalidateQueries({ queryKey: ['transactions'] });
+                        qc.invalidateQueries({ queryKey: ['monthly-summary'] });
+                        addToast({ type: 'success', message: `${result.imported} transacciones eliminadas` });
+                        onClose();
+                      } catch {
+                        addToast({ type: 'error', message: 'No se pudo deshacer la importación' });
+                      } finally {
+                        setUndoLoading(false);
+                      }
+                    }}
+                    disabled={undoLoading}
+                    className="btn-secondary flex-1 py-2 flex items-center justify-center gap-1.5 text-warning-400 border-warning-500/30 hover:bg-warning-500/10"
+                  >
+                    {undoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Deshacer importación
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
