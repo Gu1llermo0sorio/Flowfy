@@ -309,14 +309,14 @@ html:not(.dark) {
    Based on the component from uiverse.io
 ───────────────────────────────────────────────────────────── */
 .theme-switch {
-  --toggle-size: 26px;
-  --container-width: 5.625em;
-  --container-height: 2.5em;
+  --toggle-size: 30px;
+  --container-width: 5em;
+  --container-height: 2.2em;
   --container-radius: 6.25em;
   --container-light-bg: #3D7EAE;
   --container-night-bg: #1D1F2C;
-  --circle-container-diameter: 3.375em;
-  --sun-moon-diameter: 2.125em;
+  --circle-container-diameter: 3em;
+  --sun-moon-diameter: 1.9em;
   --sun-bg: #ECCA2F;
   --moon-bg: #C4C9D1;
   --spot-color: #959DB1;

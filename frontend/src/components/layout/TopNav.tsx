@@ -98,7 +98,7 @@ export default function TopNav() {
                 }`
               }
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className="w-4 h-4" />
               {label}
             </NavLink>
           ))}
@@ -113,7 +113,7 @@ export default function TopNav() {
                 }`
               }
             >
-              <Shield className="w-3.5 h-3.5" />
+              <Shield className="w-4 h-4" />
               Admin
             </NavLink>
           )}
@@ -147,7 +147,7 @@ export default function TopNav() {
           className="relative p-2 rounded-lg text-surface-400 hover:text-surface-50 hover:bg-surface-700 transition-colors"
           aria-label="Notificaciones"
         >
-          <Bell className="w-4 h-4" />
+          <Bell className="w-5 h-5" />
           {notificationCount > 0 && (
             <span className="absolute top-1 right-1 w-3.5 h-3.5 bg-danger rounded-full text-white text-[9px] flex items-center justify-center font-bold">
               {notificationCount > 9 ? '9+' : notificationCount}
