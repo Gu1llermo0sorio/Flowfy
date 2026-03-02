@@ -129,7 +129,7 @@ export default function Dashboard() {
       {/* Expenses by category pie chart */}
       {summary?.byCategory && summary.byCategory.length > 0 && (
         <div className="card p-4">
-          <h2 className="font-semibold text-white mb-4">Gastos por categoría</h2>
+          <h2 className="font-semibold text-surface-50 mb-4">Gastos por categoría</h2>
           <div className="flex flex-col md:flex-row gap-4 items-center">
             <div className="w-full md:w-48 h-48 flex-shrink-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -197,7 +197,7 @@ export default function Dashboard() {
       {/* Recent transactions */}
       <div className="card p-4 space-y-3">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="font-semibold text-white">Últimos movimientos</h2>
+          <h2 className="font-semibold text-surface-50">Últimos movimientos</h2>
           <button
             onClick={() => navigate('/transactions')}
             className="text-xs text-primary-400 hover:text-primary-300 transition-colors"
@@ -238,7 +238,7 @@ export default function Dashboard() {
                 {tx.category?.icon ?? '💸'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
+                <p className="text-sm font-medium text-surface-50 truncate">
                   {tx.description}
                 </p>
                 <p className="text-xs text-surface-400">
@@ -263,7 +263,7 @@ export default function Dashboard() {
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="font-semibold text-white">Tu progreso</h2>
+              <h2 className="font-semibold text-surface-50">Tu progreso</h2>
               <p className="text-xs text-surface-400">Nivel {user.level} · {user.levelTitle}</p>
             </div>
             <div className="text-right">

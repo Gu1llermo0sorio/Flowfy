@@ -110,7 +110,7 @@ export default function TransactionsPage() {
     <div className="max-w-3xl mx-auto space-y-5 pb-24">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Movimientos</h1>
+        <h1 className="text-2xl font-bold text-surface-50">Movimientos</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowImport(true)}
@@ -135,7 +135,7 @@ export default function TransactionsPage() {
         <button onClick={handlePrevMonth} className="p-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-surface-700 transition-colors">
           <ChevronLeft size={18} />
         </button>
-        <button onClick={handleToday} className="text-sm font-semibold text-white hover:text-primary-400 transition-colors capitalize">
+        <button onClick={handleToday} className="text-sm font-semibold text-surface-50 hover:text-primary-400 transition-colors capitalize">
           {monthLabel1st}
         </button>
         <button onClick={handleNextMonth} className="p-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-surface-700 transition-colors">
@@ -339,7 +339,7 @@ function TransactionRow({ tx, onEdit, onDelete }: RowProps) {
         {categoryIcon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white truncate">{tx.description}</p>
+        <p className="text-sm font-medium text-surface-50 truncate">{tx.description}</p>
         <p className="text-xs text-surface-500 truncate">
           {tx.category?.nameEs ?? 'Sin categoría'}{tx.subcategory?.nameEs && ` · ${tx.subcategory.nameEs}`}
         </p>
@@ -390,7 +390,7 @@ function EmptyState({ hasFilters, onClear, onNew }: { hasFilters: boolean; onCle
   return (
     <div className="card p-10 text-center">
       <p className="text-4xl mb-3">{hasFilters ? '🔍' : '💸'}</p>
-      <p className="text-base font-semibold text-white mb-1">
+      <p className="text-base font-semibold text-surface-50 mb-1">
         {hasFilters ? 'Sin resultados' : 'Sin movimientos este mes'}
       </p>
       <p className="text-sm text-surface-400 mb-5">

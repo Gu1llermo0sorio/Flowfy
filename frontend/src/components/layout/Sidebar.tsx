@@ -142,7 +142,7 @@ export default function Sidebar() {
                 {level}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-white truncate">{user.name}</p>
+                <p className="text-xs font-medium text-surface-50 truncate">{user.name}</p>
                 <p className="text-[10px] text-surface-400">{formatXP(xp)} XP</p>
               </div>
             </div>

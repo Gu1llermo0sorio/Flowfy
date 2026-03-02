@@ -419,458 +419,480 @@ export default function TransactionModal({ transaction, onClose }: Props) {
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className={`p-5 space-y-4 ${mode === 'capture' ? 'hidden' : ''}`}>
-            {/* Type toggle */}
-            <Controller
-              name="type"
-              control={control}
-              render={({ field }) => (
-                <div className="grid grid-cols-2 gap-2 p-1 bg-surface-800 rounded-xl">
-                  {(['expense', 'income'] as const).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => field.onChange(t)}
-                      className={clsx(
-                        'flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all',
-                        field.value === t
-                          ? t === 'expense'
-                            ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/40'
-                            : 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40'
-                          : 'text-surface-400 hover:text-white'
-                      )}
-                    >
-                      {t === 'expense' ? <TrendingDown size={16} /> : <TrendingUp size={16} />}
-                      {t === 'expense' ? 'Gasto' : 'Ingreso'}
-                    </button>
-                  ))}
-                </div>
-              )}
-            />
+          <form onSubmit={handleSubmit(onSubmit)} className={`${mode === 'capture' ? 'hidden' : ''} pb-5`}>
 
-            {/* Description */}
-            <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">
-                Descripción *
-              </label>
-              <input
-                {...register('description')}
-                placeholder="Ej: Supermercado Tienda Inglesa"
-                className={clsx(
-                  'w-full bg-surface-800 border rounded-lg px-3 py-2.5 text-sm text-white placeholder-surface-500 focus:outline-none focus:ring-1 transition-colors',
-                  errors.description
-                    ? 'border-red-500/60 focus:ring-red-500/40'
-                    : 'border-surface-700 focus:ring-primary-500/40'
-                )}
-              />
-              {errors.description && (
-                <p className="text-xs text-red-400 mt-1">{errors.description.message}</p>
-              )}
-            </div>
-
-            {/* Amount + Currency */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-surface-400 mb-1.5">
-                  Monto *
-                </label>
-                <Controller
-                  name="amount"
-                  control={control}
-                  render={({ field }) => (
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={field.value ?? ''}
-                      onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                      className={clsx(
-                        'w-full bg-surface-800 border rounded-lg px-3 py-2.5 text-sm text-white placeholder-surface-500 focus:outline-none focus:ring-1 transition-colors',
-                        errors.amount
-                          ? 'border-red-500/60 focus:ring-red-500/40'
-                          : 'border-surface-700 focus:ring-primary-500/40'
-                      )}
-                    />
-                  )}
-                />
-                {errors.amount && (
-                  <p className="text-xs text-red-400 mt-1">{errors.amount.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-400 mb-1.5">
-                  Moneda
-                </label>
-                <select
-                  {...register('currency')}
-                  className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-primary-500/40"
-                >
-                  <option value="UYU">UYU</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Date */}
-            <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">Fecha *</label>
-              <input
-                {...register('date')}
-                type="datetime-local"
-                className={clsx(
-                  'w-full bg-surface-800 border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 transition-colors',
-                  errors.date
-                    ? 'border-red-500/60 focus:ring-red-500/40'
-                    : 'border-surface-700 focus:ring-primary-500/40'
-                )}
-              />
-            </div>
-
-            {/* Category */}
-            <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">
-                Categoría *
-              </label>
-              <select
-                {...register('categoryId')}
-                className={clsx(
-                  'w-full bg-surface-800 border rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 transition-colors',
-                  errors.categoryId
-                    ? 'border-red-500/60 focus:ring-red-500/40'
-                    : 'border-surface-700 focus:ring-primary-500/40'
-                )}
-              >
-                <option value="">Seleccioná una categoría</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.icon} {cat.nameEs}
-                  </option>
-                ))}
-              </select>
-              {errors.categoryId && (
-                <p className="text-xs text-red-400 mt-1">{errors.categoryId.message}</p>
-              )}
-            </div>
-
-            {/* Subcategory */}
-            {subcategories.length > 0 && (
-              <div>
-                <label className="block text-xs font-medium text-surface-400 mb-1.5">
-                  Subcategoría
-                </label>
-                <select
-                  {...register('subcategoryId')}
-                  className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-primary-500/40"
-                >
-                  <option value="">Sin subcategoría</option>
-                  {subcategories.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.icon && `${sub.icon} `}{sub.nameEs}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Payment method */}
-            <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">
-                Método de pago
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                <Controller
-                  name="paymentMethod"
-                  control={control}
-                  render={({ field }) =>
-                    <>
-                      {PAYMENT_METHODS.map((pm) => (
-                        <button
-                          key={pm.value}
-                          type="button"
-                          onClick={() =>
-                            field.onChange(field.value === pm.value ? undefined : pm.value)
-                          }
-                          className={clsx(
-                            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                            field.value === pm.value
-                              ? 'bg-primary-500/20 border-primary-500/40 text-primary-400'
-                              : 'bg-surface-800 border-surface-700 text-surface-400 hover:text-white hover:border-surface-500'
-                          )}
-                        >
-                          <span>{pm.emoji}</span>
-                          {pm.label}
-                        </button>
-                      ))}
-                    </>
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">Notas</label>
-              <textarea
-                {...register('notes')}
-                rows={2}
-                placeholder="Notas opcionales..."
-                className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-surface-500 focus:outline-none focus:ring-1 focus:ring-primary-500/40 resize-none"
-              />
-            </div>
-
-            {/* Tags */}
-            <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">
-                Etiquetas{' '}
-                <span className="text-surface-500">(separadas por coma)</span>
-              </label>
-              <input
-                {...register('tagsRaw')}
-                placeholder="Ej: familia, fijo, supermercado"
-                className="w-full bg-surface-800 border border-surface-700 rounded-lg px-3 py-2.5 text-sm text-surface-50 placeholder-surface-500 focus:outline-none focus:ring-1 focus:ring-primary-500/40"
-              />
-            </div>
-
-            {/* Receipt / AI scan */}
-            <div className="space-y-2">
-              <label className="block text-xs font-medium text-surface-400">
-                Comprobante IA{' '}
-                <span className="text-surface-500">(opcional — completa el form automáticamente)</span>
-              </label>
-
-              {/* Drop zone — no file yet */}
-              {!receiptPreview && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex flex-col items-center gap-2 py-5 rounded-xl border-2 border-dashed border-surface-700 text-surface-500 hover:border-primary-500/60 hover:text-primary-400 transition-colors group"
-                >
-                  <div className="flex items-center gap-2">
-                    <Camera className="w-5 h-5" />
-                    <Sparkles className="w-4 h-4 group-hover:text-primary-400" />
-                  </div>
-                  <span className="text-xs font-medium">Subir foto o PDF del ticket</span>
-                  <span className="text-[10px] text-surface-600">La IA detectará comercio, monto, fecha y categoría</span>
-                </button>
-              )}
-
-              {/* File selected — preview + analysis */}
-              {receiptPreview && (
-                <div className="space-y-2.5">
-                  {/* Image preview */}
-                  <div className="relative rounded-xl overflow-hidden border border-surface-700">
-                    <img src={receiptPreview} alt="Comprobante" className="w-full max-h-36 object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setReceiptFile(null);
-                        setReceiptPreview(null);
-                        setAiStatus('idle');
-                        setAiResult(null);
-                        setAiApplied(false);
-                      }}
-                      className="absolute top-2 right-2 p-1 rounded-lg bg-black/60 text-white hover:bg-black/80"
-                    >
-                      <X size={13} />
-                    </button>
-                    {/* Badge de estado sobre la imagen */}
-                    <div className="absolute top-2 left-2">
-                      {aiStatus === 'analyzing' && (
-                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 text-primary-300 text-[10px] font-medium">
-                          <Loader2 className="w-3 h-3 animate-spin" /> Analizando...
-                        </span>
-                      )}
-                      {aiStatus === 'done' && (
-                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 text-emerald-300 text-[10px] font-medium">
-                          <Sparkles className="w-3 h-3" /> IA lista
-                        </span>
-                      )}
-                      {aiStatus === 'error' && (
-                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 text-rose-300 text-[10px] font-medium">
-                          <AlertCircle className="w-3 h-3" /> Error
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Analyzing */}
-                  {aiStatus === 'analyzing' && (
-                    <div className="flex items-center gap-2.5 p-3 rounded-xl bg-primary-500/10 border border-primary-500/20">
-                      <Loader2 className="w-4 h-4 animate-spin text-primary-400 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs font-medium text-primary-300">Analizando con IA…</p>
-                        <p className="text-[10px] text-surface-500 mt-0.5">Claude está leyendo el comprobante</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* AI result — show detected fields */}
-                  {aiStatus === 'done' && aiResult && (
-                    <div className="p-3 rounded-xl bg-surface-800 border border-surface-700 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-xs font-semibold text-surface-200">
-                          <Sparkles className="w-3.5 h-3.5 text-primary-400" />
-                          Datos detectados
-                          <span className="text-surface-500 font-normal">
-                            ({Math.round((aiResult.confidence ?? 0) * 100)}% confianza)
-                          </span>
-                        </span>
-                        {aiApplied && (
-                          <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
-                            <Check className="w-3 h-3" /> Aplicado
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Field chips */}
-                      <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                        {aiResult.merchant && (
-                          <div className="col-span-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
-                            <span className="text-surface-400 shrink-0">Comercio</span>
-                            <span className="font-medium text-surface-100 truncate">{aiResult.merchant}</span>
-                          </div>
-                        )}
-                        {aiResult.description && (
-                          <div className="col-span-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
-                            <span className="text-surface-400 shrink-0">Descripción</span>
-                            <span className="font-medium text-surface-100 truncate">{aiResult.description}</span>
-                          </div>
-                        )}
-                        {aiResult.amount != null && aiResult.amount > 0 && (
-                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
-                            <span className="text-surface-400 shrink-0">Monto</span>
-                            <span className="font-mono font-semibold text-emerald-400">
-                              {aiResult.amount.toLocaleString('es-UY')} {aiResult.currency ?? ''}
-                            </span>
-                          </div>
-                        )}
-                        {aiResult.date && (
-                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
-                            <span className="text-surface-400 shrink-0">Fecha</span>
-                            <span className="font-medium text-surface-100">{aiResult.date}</span>
-                          </div>
-                        )}
-                        {aiResult.categoryHint && (
-                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
-                            <span className="text-surface-400 shrink-0">Categoría</span>
-                            <span className="font-medium text-surface-100 capitalize">{aiResult.categoryHint}</span>
-                          </div>
-                        )}
-                        {aiResult.paymentMethod && (
-                          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-700">
-                            <span className="text-surface-400 shrink-0">Pago</span>
-                            <span className="font-medium text-surface-100 capitalize">{aiResult.paymentMethod}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className="flex gap-2 pt-1">
-                        {!aiApplied ? (
-                          <button
-                            type="button"
-                            onClick={() => applyAIResults()}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold transition-colors"
-                          >
-                            <Zap className="w-3.5 h-3.5" />
-                            Completar formulario
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => applyAIResults()}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface-700 hover:bg-surface-600 text-surface-300 text-xs font-medium transition-colors"
-                          >
-                            <RefreshCw className="w-3 h-3" />
-                            Volver a aplicar
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Error state */}
-                  {aiStatus === 'error' && (
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
-                      <div className="flex items-center gap-2 text-xs text-rose-300">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                        No se pudo analizar el comprobante
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => receiptFile && handleAnalyzeReceipt(receiptFile)}
-                        className="text-[10px] text-primary-400 hover:text-primary-300 underline ml-2 shrink-0"
-                      >
-                        Reintentar
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,application/pdf"
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ''; }}
-              />
-            </div>
-
-            {/* Recurring */}
-            <label className="flex items-center gap-3 cursor-pointer">
+            {/* ── Type toggle ─────────────────────────────── */}
+            <div className="px-5 pt-5">
               <Controller
-                name="isRecurring"
+                name="type"
                 control={control}
                 render={({ field }) => (
-                  <button
-                    type="button"
-                    onClick={() => field.onChange(!field.value)}
-                    className={clsx(
-                      'relative w-10 h-5 rounded-full transition-colors',
-                      field.value ? 'bg-primary-500' : 'bg-surface-700'
-                    )}
-                  >
-                    <span
-                      className={clsx(
-                        'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform',
-                        field.value && 'translate-x-5'
-                      )}
-                    />
-                  </button>
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-surface-800 rounded-xl border border-surface-700/50">
+                    {(['expense', 'income'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => field.onChange(t)}
+                        className={clsx(
+                          'flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all',
+                          field.value === t
+                            ? t === 'expense'
+                              ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/40'
+                              : 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40'
+                            : 'text-surface-400 hover:text-surface-50'
+                        )}
+                      >
+                        {t === 'expense' ? <TrendingDown size={16} /> : <TrendingUp size={16} />}
+                        {t === 'expense' ? 'Gasto' : 'Ingreso'}
+                      </button>
+                    ))}
+                  </div>
                 )}
               />
-              <span className="text-sm text-surface-300">Movimiento recurrente</span>
-            </label>
+            </div>
 
-            {/* Submit */}
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-3 rounded-xl border border-surface-700 text-surface-300 text-sm font-semibold hover:bg-surface-800 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className={clsx(
-                  'flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2',
-                  selectedType === 'expense'
-                    ? 'bg-red-500 hover:bg-red-600 text-white'
-                    : 'bg-emerald-500 hover:bg-emerald-600 text-white',
-                  isSubmitting && 'opacity-70 cursor-not-allowed'
+            {/* ── Sección: Detalles ────────────────────────── */}
+            <div className="mx-5 mt-4 rounded-2xl bg-surface-800 border border-surface-700/50 overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-surface-700/50">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-surface-400">Detalles</span>
+              </div>
+              <div className="p-4 space-y-3">
+
+                {/* Descripción */}
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1.5">
+                    Descripción <span className="text-surface-500">*</span>
+                  </label>
+                  <input
+                    {...register('description')}
+                    placeholder="Ej: Supermercado Tienda Inglesa"
+                    className={clsx(
+                      'w-full bg-surface-900 border rounded-xl px-3 py-2.5 text-sm text-surface-50 placeholder-surface-500 focus:outline-none focus:ring-2 transition-all',
+                      errors.description
+                        ? 'border-red-500/60 focus:ring-red-500/30'
+                        : 'border-surface-700 focus:ring-primary-500/30 focus:border-primary-500/50'
+                    )}
+                  />
+                  {errors.description && (
+                    <p className="text-xs text-red-400 mt-1">{errors.description.message}</p>
+                  )}
+                </div>
+
+                {/* Monto + Moneda */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-surface-400 mb-1.5">
+                      Monto <span className="text-surface-500">*</span>
+                    </label>
+                    <Controller
+                      name="amount"
+                      control={control}
+                      render={({ field }) => (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                          className={clsx(
+                            'w-full bg-surface-900 border rounded-xl px-3 py-2.5 text-sm text-surface-50 placeholder-surface-500 focus:outline-none focus:ring-2 transition-all',
+                            errors.amount
+                              ? 'border-red-500/60 focus:ring-red-500/30'
+                              : 'border-surface-700 focus:ring-primary-500/30 focus:border-primary-500/50'
+                          )}
+                        />
+                      )}
+                    />
+                    {errors.amount && (
+                      <p className="text-xs text-red-400 mt-1">{errors.amount.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-surface-400 mb-1.5">Moneda</label>
+                    <select
+                      {...register('currency')}
+                      className="w-full bg-surface-900 border border-surface-700 rounded-xl px-3 py-2.5 text-sm text-surface-50 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/50 transition-all"
+                    >
+                      <option value="UYU">UYU</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Fecha */}
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1.5">
+                    Fecha <span className="text-surface-500">*</span>
+                  </label>
+                  <input
+                    {...register('date')}
+                    type="datetime-local"
+                    className={clsx(
+                      'w-full bg-surface-900 border rounded-xl px-3 py-2.5 text-sm text-surface-50 focus:outline-none focus:ring-2 transition-all',
+                      errors.date
+                        ? 'border-red-500/60 focus:ring-red-500/30'
+                        : 'border-surface-700 focus:ring-primary-500/30 focus:border-primary-500/50'
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Sección: Categorización ──────────────────── */}
+            <div className="mx-5 mt-3 rounded-2xl bg-surface-800 border border-surface-700/50 overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-surface-700/50">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-surface-400">Categorización</span>
+              </div>
+              <div className="p-4 space-y-3">
+
+                {/* Categoría */}
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1.5">
+                    Categoría <span className="text-surface-500">*</span>
+                  </label>
+                  <select
+                    {...register('categoryId')}
+                    className={clsx(
+                      'w-full bg-surface-900 border rounded-xl px-3 py-2.5 text-sm text-surface-50 focus:outline-none focus:ring-2 transition-all',
+                      errors.categoryId
+                        ? 'border-red-500/60 focus:ring-red-500/30'
+                        : 'border-surface-700 focus:ring-primary-500/30 focus:border-primary-500/50'
+                    )}
+                  >
+                    <option value="">Seleccioná una categoría</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.icon} {cat.nameEs}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.categoryId && (
+                    <p className="text-xs text-red-400 mt-1">{errors.categoryId.message}</p>
+                  )}
+                </div>
+
+                {/* Subcategoría */}
+                {subcategories.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-surface-400 mb-1.5">Subcategoría</label>
+                    <select
+                      {...register('subcategoryId')}
+                      className="w-full bg-surface-900 border border-surface-700 rounded-xl px-3 py-2.5 text-sm text-surface-50 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/50 transition-all"
+                    >
+                      <option value="">Sin subcategoría</option>
+                      {subcategories.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.icon && `${sub.icon} `}{sub.nameEs}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 )}
-              >
-                {isSubmitting ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Check size={16} />
+
+                {/* Método de pago */}
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1.5">Método de pago</label>
+                  <div className="flex gap-2 flex-wrap">
+                    <Controller
+                      name="paymentMethod"
+                      control={control}
+                      render={({ field }) =>
+                        <>
+                          {PAYMENT_METHODS.map((pm) => (
+                            <button
+                              key={pm.value}
+                              type="button"
+                              onClick={() =>
+                                field.onChange(field.value === pm.value ? undefined : pm.value)
+                              }
+                              className={clsx(
+                                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                                field.value === pm.value
+                                  ? 'bg-primary-500/20 border-primary-500/40 text-primary-400'
+                                  : 'bg-surface-900 border-surface-700 text-surface-400 hover:text-surface-50 hover:border-surface-500'
+                              )}
+                            >
+                              <span>{pm.emoji}</span>
+                              {pm.label}
+                            </button>
+                          ))}
+                        </>
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Sección: Extras ──────────────────────────── */}
+            <div className="mx-5 mt-3 rounded-2xl bg-surface-800 border border-surface-700/50 overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-surface-700/50">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-surface-400">Extras</span>
+              </div>
+              <div className="p-4 space-y-3">
+
+                {/* Notas */}
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1.5">Notas</label>
+                  <textarea
+                    {...register('notes')}
+                    rows={2}
+                    placeholder="Notas opcionales..."
+                    className="w-full bg-surface-900 border border-surface-700 rounded-xl px-3 py-2.5 text-sm text-surface-50 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/50 transition-all resize-none"
+                  />
+                </div>
+
+                {/* Etiquetas */}
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1.5">
+                    Etiquetas <span className="text-surface-500">(separadas por coma)</span>
+                  </label>
+                  <input
+                    {...register('tagsRaw')}
+                    placeholder="Ej: familia, fijo, supermercado"
+                    className="w-full bg-surface-900 border border-surface-700 rounded-xl px-3 py-2.5 text-sm text-surface-50 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/50 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Sección: Comprobante IA ───────────────────── */}
+            <div className="mx-5 mt-3 rounded-2xl bg-surface-800 border border-surface-700/50 overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-surface-700/50">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-surface-400">Comprobante IA</span>
+                <span className="ml-2 text-[10px] text-surface-500">— completa el form automáticamente</span>
+              </div>
+              <div className="p-4 space-y-2">
+
+                {/* Drop zone — sin archivo */}
+                {!receiptPreview && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full flex flex-col items-center gap-2 py-5 rounded-xl border-2 border-dashed border-surface-700 text-surface-500 hover:border-primary-500/60 hover:text-primary-400 transition-colors group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Camera className="w-5 h-5" />
+                      <Sparkles className="w-4 h-4 group-hover:text-primary-400" />
+                    </div>
+                    <span className="text-xs font-medium">Subir foto o PDF del ticket</span>
+                    <span className="text-[10px] text-surface-600">La IA detectará comercio, monto, fecha y categoría</span>
+                  </button>
                 )}
-                {isEdit ? 'Guardar cambios' : 'Registrar'}
-              </button>
+
+                {/* Archivo seleccionado — preview + análisis */}
+                {receiptPreview && (
+                  <div className="space-y-2.5">
+                    <div className="relative rounded-xl overflow-hidden border border-surface-700">
+                      <img src={receiptPreview} alt="Comprobante" className="w-full max-h-36 object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReceiptFile(null);
+                          setReceiptPreview(null);
+                          setAiStatus('idle');
+                          setAiResult(null);
+                          setAiApplied(false);
+                        }}
+                        className="absolute top-2 right-2 p-1 rounded-lg bg-black/60 text-white hover:bg-black/80"
+                      >
+                        <X size={13} />
+                      </button>
+                      <div className="absolute top-2 left-2">
+                        {aiStatus === 'analyzing' && (
+                          <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 text-primary-300 text-[10px] font-medium">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Analizando...
+                          </span>
+                        )}
+                        {aiStatus === 'done' && (
+                          <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 text-emerald-300 text-[10px] font-medium">
+                            <Sparkles className="w-3 h-3" /> IA lista
+                          </span>
+                        )}
+                        {aiStatus === 'error' && (
+                          <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/60 text-rose-300 text-[10px] font-medium">
+                            <AlertCircle className="w-3 h-3" /> Error
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {aiStatus === 'analyzing' && (
+                      <div className="flex items-center gap-2.5 p-3 rounded-xl bg-primary-500/10 border border-primary-500/20">
+                        <Loader2 className="w-4 h-4 animate-spin text-primary-400 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs font-medium text-primary-300">Analizando con IA…</p>
+                          <p className="text-[10px] text-surface-500 mt-0.5">Claude está leyendo el comprobante</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {aiStatus === 'done' && aiResult && (
+                      <div className="p-3 rounded-xl bg-surface-900 border border-surface-700 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-xs font-semibold text-surface-200">
+                            <Sparkles className="w-3.5 h-3.5 text-primary-400" />
+                            Datos detectados
+                            <span className="text-surface-500 font-normal">
+                              ({Math.round((aiResult.confidence ?? 0) * 100)}% confianza)
+                            </span>
+                          </span>
+                          {aiApplied && (
+                            <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+                              <Check className="w-3 h-3" /> Aplicado
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                          {aiResult.merchant && (
+                            <div className="col-span-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-800">
+                              <span className="text-surface-400 shrink-0">Comercio</span>
+                              <span className="font-medium text-surface-100 truncate">{aiResult.merchant}</span>
+                            </div>
+                          )}
+                          {aiResult.description && (
+                            <div className="col-span-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-800">
+                              <span className="text-surface-400 shrink-0">Descripción</span>
+                              <span className="font-medium text-surface-100 truncate">{aiResult.description}</span>
+                            </div>
+                          )}
+                          {aiResult.amount != null && aiResult.amount > 0 && (
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-800">
+                              <span className="text-surface-400 shrink-0">Monto</span>
+                              <span className="font-mono font-semibold text-emerald-400">
+                                {aiResult.amount.toLocaleString('es-UY')} {aiResult.currency ?? ''}
+                              </span>
+                            </div>
+                          )}
+                          {aiResult.date && (
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-800">
+                              <span className="text-surface-400 shrink-0">Fecha</span>
+                              <span className="font-medium text-surface-100">{aiResult.date}</span>
+                            </div>
+                          )}
+                          {aiResult.categoryHint && (
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-800">
+                              <span className="text-surface-400 shrink-0">Categoría</span>
+                              <span className="font-medium text-surface-100 capitalize">{aiResult.categoryHint}</span>
+                            </div>
+                          )}
+                          {aiResult.paymentMethod && (
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-surface-800">
+                              <span className="text-surface-400 shrink-0">Pago</span>
+                              <span className="font-medium text-surface-100 capitalize">{aiResult.paymentMethod}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          {!aiApplied ? (
+                            <button
+                              type="button"
+                              onClick={() => applyAIResults()}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold transition-colors"
+                            >
+                              <Zap className="w-3.5 h-3.5" />
+                              Completar formulario
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => applyAIResults()}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface-700 hover:bg-surface-600 text-surface-300 text-xs font-medium transition-colors"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Volver a aplicar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {aiStatus === 'error' && (
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                        <div className="flex items-center gap-2 text-xs text-rose-300">
+                          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                          No se pudo analizar el comprobante
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => receiptFile && handleAnalyzeReceipt(receiptFile)}
+                          className="text-[10px] text-primary-400 hover:text-primary-300 underline ml-2 shrink-0"
+                        >
+                          Reintentar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ''; }}
+                />
+              </div>
+            </div>
+
+            {/* ── Recurrente + Botones ─────────────────────── */}
+            <div className="px-5 mt-4 space-y-4">
+
+              {/* Toggle recurrente */}
+              <label className="flex items-center gap-3 cursor-pointer">
+                <Controller
+                  name="isRecurring"
+                  control={control}
+                  render={({ field }) => (
+                    <button
+                      type="button"
+                      onClick={() => field.onChange(!field.value)}
+                      className={clsx(
+                        'relative w-10 h-5 rounded-full transition-colors',
+                        field.value ? 'bg-primary-500' : 'bg-surface-700'
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform',
+                          field.value && 'translate-x-5'
+                        )}
+                      />
+                    </button>
+                  )}
+                />
+                <span className="text-sm text-surface-300">Movimiento recurrente</span>
+              </label>
+
+              {/* Botones */}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 py-3 rounded-xl border border-surface-700 text-surface-300 text-sm font-semibold hover:bg-surface-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={clsx(
+                    'flex-1 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-lg',
+                    selectedType === 'expense'
+                      ? 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white shadow-red-500/25'
+                      : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-emerald-500/25',
+                    isSubmitting && 'opacity-70 cursor-not-allowed'
+                  )}
+                >
+                  {isSubmitting ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Check size={16} />
+                  )}
+                  {isEdit ? 'Guardar cambios' : 'Registrar'}
+                </button>
+              </div>
             </div>
           </form>
         </motion.div>

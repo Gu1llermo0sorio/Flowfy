@@ -17,7 +17,7 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-lg mx-auto space-y-4">
-      <h1 className="text-2xl font-bold text-white mb-6">Perfil</h1>
+      <h1 className="text-2xl font-bold text-surface-50 mb-6">Perfil</h1>
 
       {/* Avatar card */}
       <div className="card p-6 flex items-center gap-4">
@@ -25,7 +25,7 @@ export default function ProfilePage() {
           {user.name.charAt(0).toUpperCase()}
         </div>
         <div>
-          <h2 className="text-xl font-bold text-white">{user.name}</h2>
+          <h2 className="text-xl font-bold text-surface-50">{user.name}</h2>
           <p className="text-surface-400 text-sm">{user.email}</p>
           <div className="flex items-center gap-2 mt-1">
             <span className="chip chip-primary text-xs">Nivel {user.level}</span>

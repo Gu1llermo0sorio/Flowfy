@@ -8,8 +8,6 @@ import {
   Target,
   Users,
   Bell,
-  Sun,
-  Moon,
   LogOut,
   User,
   Settings,
@@ -23,6 +21,7 @@ import { useUIStore } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatXP } from '../../lib/formatters';
 import { FlowfyLogo } from '../ui/FlowfyLogo';
+import { ThemeToggle } from '../ui/ThemeToggle';
 
 const NAV_LINKS = [
   { to: '/', icon: LayoutDashboard, label: 'Inicio', exact: true },
@@ -33,8 +32,6 @@ const NAV_LINKS = [
 ];
 
 export default function TopNav() {
-  const theme = useUIStore((s) => s.theme);
-  const toggleTheme = useUIStore((s) => s.toggleTheme);
   const notificationCount = useUIStore((s) => s.notificationCount);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -142,13 +139,7 @@ export default function TopNav() {
         )}
 
         {/* Theme toggle */}
-        <button
-          onClick={toggleTheme}
-          className="p-2 rounded-lg text-surface-400 hover:text-surface-50 hover:bg-surface-700 transition-colors"
-          aria-label="Cambiar tema"
-        >
-          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
+        <ThemeToggle />
 
         {/* Notifications */}
         <button

@@ -341,7 +341,7 @@ function CreateGoalModal({ onClose }: { onClose: () => void }) {
       emoji:        data.emoji,
       targetAmount: amountToCentavos(data.targetAmount),
       currency:     data.currency as Currency,
-      targetDate:   data.targetDate || undefined,
+      targetDate:   data.targetDate ? new Date(data.targetDate).toISOString() : undefined,
       description:  data.description || undefined,
     });
     onClose();
