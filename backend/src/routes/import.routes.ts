@@ -212,17 +212,54 @@ interface ParsedTx {
 
 // Map merchant keywords → category nameEs
 const MERCHANT_CATEGORY_HINTS: Array<{ pattern: RegExp; nameEs: string }> = [
-  { pattern: /disco\b|devoto|tienda\s*inglesa|g[eé]ant|tata\b|multiahorro|fresh\s*market|carestino|super\s*mercado/i, nameEs: 'Comida y Restaurantes' },
-  { pattern: /pedidosya|rappi|pizza\s*hut|mcdonald|burger|subway|kfc/i, nameEs: 'Comida y Restaurantes' },
-  { pattern: /farmashop|farmacity|farma\b/i, nameEs: 'Cuidado Personal' },
-  { pattern: /peluquer[ií]a|barber[ií]a|spa\b|manicur|pedicur|est[eé]tica/i, nameEs: 'Cuidado Personal' },
-  { pattern: /\buber\b|cabify/i, nameEs: 'Transporte' },
-  { pattern: /ancap|shell|petrobr[aá]s|axion\b/i, nameEs: 'Transporte' },
-  { pattern: /netflix|spotify|youtube\s*premium|disney[+\s]|hbo\b|prime\s*video|apple\s*tv|paramount|deezer|twitch/i, nameEs: 'Entretenimiento' },
-  { pattern: /redtickets|tickantel|cine\b|cinema|teatro\b/i, nameEs: 'Entretenimiento' },
+  // ── Comida y Restaurantes ──────────────────────────────────────────────────
+  { pattern: /disco\b|devoto|tienda\s*inglesa|g[eé]ant|tata\b|multiahorro|fresh\s*market|macromercado|carestino|super\s*mercado|natal\b|acodike/i, nameEs: 'Comida y Restaurantes' },
+  { pattern: /pedidosya|rappi|pizza\s*hut|mcdonald|mc\s*donalds|burger\b|subway\b|kfc\b|wendy|popeyes|mercado\s*del\s*este/i, nameEs: 'Comida y Restaurantes' },
+
+  // ── Cuidado Personal (belleza y estética — SIN farmacia) ──────────────────
+  { pattern: /peluquer[ií]a|barber[ií]a|spa\b|manicur|pedicur|est[eé]tica|guapa\b/i, nameEs: 'Cuidado Personal' },
+
+  // ── Salud (farmacia va AQUÍ, no en Cuidado Personal) ─────────────────────
+  { pattern: /farmashop|farmacity|farma\b/i, nameEs: 'Salud' },
+  { pattern: /[oó]ptica\b|optica\b/i, nameEs: 'Salud' },
+  { pattern: /fisiocare|fisio\b|kinesi/i, nameEs: 'Salud' },
+  { pattern: /asociaci[oó]n\s*espa[nñ]ola|espa[nñ]ola\s*m[oó]vil/i, nameEs: 'Salud' },
+
+  // ── Transporte ────────────────────────────────────────────────────────────
+  { pattern: /\buber\s*\*?\s*trip\b|dlo\s*\*uber|merpago\s*\*uber|cabify/i, nameEs: 'Transporte' },
+  { pattern: /ancap|shell|petrobr[aá]s|axion\b|servicentro/i, nameEs: 'Transporte' },
+  { pattern: /\bstm\b|telepeaje|autopass|\bacu\b/i, nameEs: 'Transporte' },
+  { pattern: /\bavis\b|\bhertz\b|\beuropcar\b/i, nameEs: 'Transporte' },
+
+  // ── Entretenimiento ───────────────────────────────────────────────────────
+  { pattern: /netflix|spotify|youtube\s*premium|disney[+\s]|hbo\b|prime\s*video|apple\s*tv|paramount|deezer|twitch|vmusic/i, nameEs: 'Entretenimiento' },
+  { pattern: /redtickets|tickantel|cine\b|cinema|teatro\b|cinemark/i, nameEs: 'Entretenimiento' },
+
+  // ── Trabajo y Tecnología ──────────────────────────────────────────────────
+  { pattern: /clickup|github|notion\b|slack\b|\bzoom\b|figma\b|adobe\b|heroku|vercel|netlify|dropbox|aws\b|digital\s*ocean/i, nameEs: 'Trabajo y Tecnología' },
+
+  // ── Educación ─────────────────────────────────────────────────────────────
+  { pattern: /bookshop|bestseler|libros\b/i, nameEs: 'Educación' },
+
+  // ── Ropa y Accesorios ─────────────────────────────────────────────────────
+  { pattern: /zara\b|h\s*[&y]\s*m\b|carter[\s']|renner\b|metraje|divino\b|bas\s+basic|parisien|mango\b|bershka|decathlon|gap\b|gap\s+m\b|lemon\b|kinko\b|chic\b/i, nameEs: 'Ropa y Accesorios' },
+  // STADIUM vende ropa y artículos deportivos → Ropa y Accesorios
+  { pattern: /\bstadium\b/i, nameEs: 'Ropa y Accesorios' },
+
+  // ── Mascotas ──────────────────────────────────────────────────────────────
   { pattern: /veterinaria/i, nameEs: 'Mascotas' },
-  { pattern: /zara\b|h\s*[&y]\s*m\b|carter[\s']|lojas\s*renner|renner\b|metraje|divino\b|bas\s+basic|parisien|mango\b|bershka/i, nameEs: 'Ropa y Personal' },
-  { pattern: /antel|ost\b|ute\b|internet|vodafone|claro\b|movistar/i, nameEs: 'Hogar y Vivienda' },
+
+  // ── Hogar y Vivienda ──────────────────────────────────────────────────────
+  { pattern: /\bantel\b|ost\b|\bute\b|vodafone|claro\b|movistar|flow\b|telmex/i, nameEs: 'Hogar y Vivienda' },
+  { pattern: /handy\b|sofiaquiler/i, nameEs: 'Hogar y Vivienda' },
+
+  // ── Seguros (METLIFE, MAPFRE → NO van a Finanzas, van aquí) ──────────────
+  { pattern: /metlife|mapfre|sancor|bse\b|surre[ao]\b|asistencia\s*365/i, nameEs: 'Seguros' },
+
+  // ── Regalos y Donaciones ──────────────────────────────────────────────────
+  { pattern: /bigbox/i, nameEs: 'Regalos y Donaciones' },
+
+  // ── Finanzas (cargos e intereses bancarios/tarjeta) ───────────────────────
   { pattern: /recargo|inter[eé]s|cargo\s+financ|cargo\s+admin|comisi[oó]n|iva\s+s\//i, nameEs: 'Finanzas' },
 ];
 
