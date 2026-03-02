@@ -194,7 +194,144 @@ importRouter.post('/confirm', async (req: AuthRequest, res, next) => {
   }
 });
 
-// ── POST /api/import/pdf-preview — parse PDF bank/card statement with AI ──────
+// ── OCA/UY card statement regex parser (no AI needed) ────────────────────────
+interface ParsedTx {
+  date: string;
+  description: string;
+  amount: number;      // centavos
+  currency: 'UYU' | 'USD';
+  type: 'income' | 'expense';
+  installmentCurrent: number | null;
+  installmentTotal: number | null;
+  institution: string;
+  keep: boolean;
+}
+
+function detectInstitution(text: string): string {
+  const upper = text.slice(0, 500).toUpperCase();
+  if (upper.includes('OCA')) return 'oca';
+  if (upper.includes('BROU') || upper.includes('BANCO DE LA REPÚBLICA')) return 'brou';
+  if (upper.includes('ITAÚ') || upper.includes('ITAU')) return 'itau';
+  if (upper.includes('SANTANDER')) return 'santander';
+  if (upper.includes('SCOTIABANK')) return 'scotiabank';
+  if (upper.includes('BBVA')) return 'bbva';
+  return 'credit_card';
+}
+
+function parseMonto(raw: string): number {
+  // UY format: 1.234,56 -> 123456 centavos
+  const clean = raw.replace(/\./g, '').replace(',', '.');
+  const val = parseFloat(clean);
+  return isNaN(val) ? 0 : Math.round(Math.abs(val) * 100);
+}
+
+function detectYearMonth(text: string): { year: number; defaultMonth: number } {
+  const MONTHS: Record<string, number> = {
+    enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+    julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+    january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+    july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  };
+  // Match "Diciembre/2024" or "Diciembre 2024"
+  const m = text.slice(0, 1000).match(/([A-Za-záéíóúÁÉÍÓÚü]+)[\/\s]+(\d{4})/i);
+  if (m) {
+    const monthNum = MONTHS[m[1].toLowerCase()];
+    const year = parseInt(m[2]);
+    if (monthNum && !isNaN(year)) return { year, defaultMonth: monthNum };
+  }
+  const now = new Date();
+  return { year: now.getFullYear(), defaultMonth: now.getMonth() + 1 };
+}
+
+function parseOCAStatement(text: string): ParsedTx[] {
+  const institution = detectInstitution(text);
+  const { year, defaultMonth } = detectYearMonth(text);
+
+  const lines = text.split('\n');
+  const results: ParsedTx[] = [];
+
+  // Main transaction line pattern:
+  // leading spaces + DD/[space]M + code (2 digits) + description + optional installments + amount
+  // Examples:
+  //      5/11  11  VETERINARIA                                                        490,00
+  //      6/ 9  11  METRAJE                                   3/ 4                     330,00
+  //     14/11  11  NETFLIX.COM                                           17,99
+  const txRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+\d{1,3}\s{1,4}(.+?)\s{2,}(?:(\d{1,2})\s*\/\s*(\d{1,2})\s+)?([\d.,]+)\s*$/;
+
+  // Skip lines: "Reducción IVA", "Comis.", header lines, empty continuation
+  const SKIP_PATTERNS = [
+    /reducción/i, /comis\./i, /cuota.*participación/i,
+    /US Dollar/i, /Uruguayan Peso/i,
+    /^\s{0,3}\S/, // lines that start with no indent (headers)
+  ];
+
+  const USD_LINE = /US\s*Dollar\s+([\d.,]+)/i;
+  const UYU_LINE = /Uruguayan\s*Peso\s+([\d.,]+)/i;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match = txRegex.exec(line);
+    if (!match) continue;
+
+    const [, dayStr, monthStr, rawDesc, instCurStr, instTotStr, rawAmount] = match;
+
+    const day = parseInt(dayStr);
+    let month = parseInt(monthStr);
+    // OCA shows transaction month, which may differ from statement month
+    if (month < 1 || month > 12) month = defaultMonth;
+    // Adjust year if month > defaultMonth (previous year's transactions in Jan statement etc.)
+    let txYear = year;
+    if (month > defaultMonth) txYear = year - 1;
+
+    const dateStr = `${txYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const description = rawDesc.trim().replace(/\s+/g, ' ');
+
+    // Skip noise lines
+    if (SKIP_PATTERNS.some((p) => p.test(description))) continue;
+    if (description.length < 2) continue;
+
+    const installmentCurrent = instCurStr ? parseInt(instCurStr) : null;
+    const installmentTotal = instTotStr ? parseInt(instTotStr) : null;
+
+    let amount = parseMonto(rawAmount);
+    let currency: 'UYU' | 'USD' = 'UYU';
+
+    // Look ahead for sub-line (USD or Peso clarification)
+    const next1 = lines[i + 1] ?? '';
+    const next2 = lines[i + 2] ?? '';
+
+    const usdMatch = USD_LINE.exec(next1) || USD_LINE.exec(next2);
+    const uyuMatch = UYU_LINE.exec(next1) || UYU_LINE.exec(next2);
+
+    if (uyuMatch) {
+      // App charged in USD but UYU sub-line shows the actual peso amount (e.g. Uber)
+      amount = parseMonto(uyuMatch[1]);
+      currency = 'UYU';
+    } else if (usdMatch) {
+      // The main line amount was already USD
+      amount = parseMonto(usdMatch[1]);
+      currency = 'USD';
+    }
+
+    if (amount <= 0) continue;
+
+    results.push({
+      date: dateStr,
+      description,
+      amount,
+      currency,
+      type: 'expense',
+      installmentCurrent,
+      installmentTotal,
+      institution,
+      keep: true,
+    });
+  }
+
+  return results;
+}
+
+// ── POST /api/import/pdf-preview — parse PDF bank/card statement ──────────────
 importRouter.post('/pdf-preview', pdfUpload.single('file'), async (req: AuthRequest, res, next) => {
   try {
     if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió archivo' }); return; }
@@ -208,11 +345,17 @@ importRouter.post('/pdf-preview', pdfUpload.single('file'), async (req: AuthRequ
       throw createError('No se pudo extraer texto del PDF. El archivo puede ser una imagen escaneada.', 400, 'PDF_NO_TEXT');
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw createError('Servicio de IA no configurado', 500, 'NO_AI');
+    // Try regex parser first (fast, no AI cost, works for OCA and similar formats)
+    const regexRows = parseOCAStatement(text);
+
+    // If regex found enough transactions, use them; otherwise try AI
+    if (regexRows.length >= 3 || !process.env.ANTHROPIC_API_KEY) {
+      const institution = regexRows[0]?.institution || detectInstitution(text);
+      res.json({ success: true, data: { rows: regexRows, totalRows: regexRows.length, institution, parsedBy: 'regex' } });
+      return;
     }
 
-    // Use Claude to parse the statement
+    // ── AI fallback for unknown formats ──────────────────────────────────────
     const { default: Anthropic } = await import('@anthropic-ai/sdk') as any;
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -223,65 +366,51 @@ importRouter.post('/pdf-preview', pdfUpload.single('file'), async (req: AuthRequ
         role: 'user',
         content: `Analiza este extracto de tarjeta de crédito/débito uruguaya y extrae TODAS las transacciones de compras.
 
-Para cada transacción devuelve un JSON array con objetos que tengan estos campos:
-- "date": string ISO YYYY-MM-DD (usa el día y mes de la transacción, el año está en el encabezado del período)
-- "description": string (nombre del comercio, limpio y capitalizado)
-- "amount": número entero en centavos UYU (monto × 100, sin decimales). Para montos en dólares, indica currency=USD y convierte a centavos de USD.
+Para cada transacción devuelve un JSON array con objetos:
+- "date": string ISO YYYY-MM-DD
+- "description": string (nombre del comercio, capitalizado)
+- "amount": entero en centavos (monto × 100). Para USD indica currency=USD y centavos de USD.
 - "currency": "UYU" o "USD"
-- "type": "expense" para compras, "income" solo si es un pago/depósito/ajuste positivo
-- "installmentCurrent": número o null (la cuota actual, ej: si dice "3/ 4" = 3)
-- "installmentTotal": número o null (el total de cuotas, ej: si dice "3/ 4" = 4)
-- "institution": "oca" si es OCA, "brou" si es BROU, "itau" si es Itaú, "santander" si es Santander, o "credit_card" si no se identifica
+- "type": "expense" para compras
+- "installmentCurrent": número o null
+- "installmentTotal": número o null
+- "institution": "oca"|"brou"|"itau"|"santander"|"credit_card"
 
-Reglas IMPORTANTES:
-- Ignorar líneas de encabezado, resumen, totales, saldo, límite
-- Ignorar comisiones (Comis. utilizac. Tj en ext.)
-- Ignorar sub-líneas de "US Dollar X.XX" o "Uruguayan Peso X.XX" (son aclaratorias, no transacciones separadas)
-- Para Uber/apps: si hay una sub-línea "Uruguayan Peso XXX,XX", usar ESE monto en UYU
-- Para Netflix/Spotify/servicios en USD: importar como USD
-- Los montos UYU usan punto como separador de miles y coma como decimal: "1.234,56" = 1234.56 UYU = 123456 centavos
-- Ignorar montos negativos (reducciones IVA, ajustes) 
-- El formato de fecha de cada línea es DD/MM dentro del período del extracto
+Reglas: ignorar encabezados, comisiones, sub-líneas "US Dollar" o "Uruguayan Peso" (son aclaratorias).
+Para Uber: usar el monto "Uruguayan Peso XXX,XX".
+Montos UYU: punto=miles, coma=decimal. "1.234,56" = 123456 centavos.
 
 Extracto:
 ${text.slice(0, 9000)}
 
-Responde SOLO con el JSON array, sin texto adicional.`,
+Responde SOLO con el JSON array.`,
       }],
     });
 
     const aiContent = aiResponse.content[0];
     if (aiContent.type !== 'text') throw createError('Error al analizar el PDF', 500, 'AI_ERROR');
 
-    // Parse AI response
     let transactions: Array<{
-      date: string;
-      description: string;
-      amount: number;
-      currency: string;
-      type: string;
-      installmentCurrent: number | null;
-      installmentTotal: number | null;
-      institution: string;
+      date: string; description: string; amount: number; currency: string;
+      type: string; installmentCurrent: number | null; installmentTotal: number | null; institution: string;
     }>;
 
     try {
       const jsonMatch = aiContent.text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error('No JSON found');
+      if (!jsonMatch) throw new Error('No JSON');
       transactions = JSON.parse(jsonMatch[0]);
     } catch {
       throw createError('No se pudo interpretar la respuesta de IA. Intente nuevamente.', 500, 'PARSE_ERROR');
     }
 
-    // Filter valid rows
-    const rows = transactions
-      .filter((t) => t.amount > 0 && t.date && t.description && t.type !== 'income')
+    const rows: ParsedTx[] = transactions
+      .filter((t) => t.amount > 0 && t.date && t.description)
       .map((t) => ({
         date: t.date,
         description: t.description.slice(0, 255),
         amount: Math.round(t.amount),
-        currency: t.currency === 'USD' ? 'USD' : 'UYU',
-        type: (t.type === 'income' ? 'income' : 'expense') as 'income' | 'expense',
+        currency: (t.currency === 'USD' ? 'USD' : 'UYU') as 'UYU' | 'USD',
+        type: 'expense' as const,
         installmentCurrent: t.installmentCurrent ?? null,
         installmentTotal: t.installmentTotal ?? null,
         institution: t.institution || 'credit_card',
