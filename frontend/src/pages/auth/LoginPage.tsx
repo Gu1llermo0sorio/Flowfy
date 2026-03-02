@@ -115,13 +115,16 @@ export default function LoginPage() {
               <label className="block text-sm font-medium text-surface-300 mb-1.5">
                 Email
               </label>
-              <input
-                {...register('email')}
-                type="email"
-                autoComplete="email"
-                placeholder="vos@ejemplo.com"
-                className={`input-base ${errors.email ? 'border-danger-500 focus:ring-danger-500' : ''}`}
-              />
+              <div className={`form-field-line ${errors.email ? 'has-error' : ''}`}>
+                <input
+                  {...register('email')}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="vos@ejemplo.com"
+                  className="input-line"
+                />
+                <span className="input-line-border" />
+              </div>
               {errors.email && (
                 <p className="text-danger-400 text-xs mt-1">{errors.email.message}</p>
               )}
@@ -132,22 +135,25 @@ export default function LoginPage() {
               <label className="block text-sm font-medium text-surface-300 mb-1.5">
                 Contraseña
               </label>
-              <div className="relative">
-                <input
-                  {...register('password')}
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  className={`input-base pr-10 ${errors.password ? 'border-danger-500 focus:ring-danger-500' : ''}`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-200 transition-colors"
-                  aria-label={showPassword ? 'Ocultar' : 'Mostrar'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+              <div className={`form-field-line ${errors.password ? 'has-error' : ''}`}>
+                <div className="relative">
+                  <input
+                    {...register('password')}
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    className="input-line pr-8"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-200 transition-colors"
+                    aria-label={showPassword ? 'Ocultar' : 'Mostrar'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <span className="input-line-border" />
               </div>
               {errors.password && (
                 <p className="text-danger-400 text-xs mt-1">{errors.password.message}</p>

@@ -98,12 +98,15 @@ export default function RegisterPage() {
                 Nombre de familia
               </span>
             </label>
-            <input
-              {...formRegister('familyName')}
-              type="text"
-              placeholder="Ej: Familia García"
-              className={`input-base ${errors.familyName ? 'border-danger-500' : ''}`}
-            />
+            <div className={`form-field-line ${errors.familyName ? 'has-error' : ''}`}>
+              <input
+                {...formRegister('familyName')}
+                type="text"
+                placeholder="Ej: Familia García"
+                className="input-line"
+              />
+              <span className="input-line-border" />
+            </div>
             {errors.familyName && (
               <p className="text-danger-400 text-xs mt-1">{errors.familyName.message}</p>
             )}
@@ -114,13 +117,16 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-surface-300 mb-1.5">
               Tu nombre
             </label>
-            <input
-              {...formRegister('name')}
-              type="text"
-              placeholder="Ej: Juan"
-              autoComplete="given-name"
-              className={`input-base ${errors.name ? 'border-danger-500' : ''}`}
-            />
+            <div className={`form-field-line ${errors.name ? 'has-error' : ''}`}>
+              <input
+                {...formRegister('name')}
+                type="text"
+                placeholder="Ej: Juan"
+                autoComplete="given-name"
+                className="input-line"
+              />
+              <span className="input-line-border" />
+            </div>
             {errors.name && (
               <p className="text-danger-400 text-xs mt-1">{errors.name.message}</p>
             )}
@@ -131,13 +137,16 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-surface-300 mb-1.5">
               Email
             </label>
-            <input
-              {...formRegister('email')}
-              type="email"
-              placeholder="vos@ejemplo.com"
-              autoComplete="email"
-              className={`input-base ${errors.email ? 'border-danger-500' : ''}`}
-            />
+            <div className={`form-field-line ${errors.email ? 'has-error' : ''}`}>
+              <input
+                {...formRegister('email')}
+                type="email"
+                placeholder="vos@ejemplo.com"
+                autoComplete="email"
+                className="input-line"
+              />
+              <span className="input-line-border" />
+            </div>
             {errors.email && (
               <p className="text-danger-400 text-xs mt-1">{errors.email.message}</p>
             )}
@@ -148,21 +157,24 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-surface-300 mb-1.5">
               Contraseña
             </label>
-            <div className="relative">
-              <input
-                {...formRegister('password')}
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Mín. 8 caracteres"
-                autoComplete="new-password"
-                className={`input-base pr-10 ${errors.password ? 'border-danger-500' : ''}`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-200 transition-colors"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+            <div className={`form-field-line ${errors.password ? 'has-error' : ''}`}>
+              <div className="relative">
+                <input
+                  {...formRegister('password')}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Mín. 8 caracteres"
+                  autoComplete="new-password"
+                  className="input-line pr-8"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-200 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <span className="input-line-border" />
             </div>
             {errors.password && (
               <p className="text-danger-400 text-xs mt-1">{errors.password.message}</p>
@@ -174,13 +186,16 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-surface-300 mb-1.5">
               Confirmar contraseña
             </label>
-            <input
-              {...formRegister('confirmPassword')}
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Repetí la contraseña"
-              autoComplete="new-password"
-              className={`input-base ${errors.confirmPassword ? 'border-danger-500' : ''}`}
-            />
+            <div className={`form-field-line ${errors.confirmPassword ? 'has-error' : ''}`}>
+              <input
+                {...formRegister('confirmPassword')}
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Repetí la contraseña"
+                autoComplete="new-password"
+                className="input-line"
+              />
+              <span className="input-line-border" />
+            </div>
             {errors.confirmPassword && (
               <p className="text-danger-400 text-xs mt-1">{errors.confirmPassword.message}</p>
             )}

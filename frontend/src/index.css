@@ -469,3 +469,37 @@ html:not(.dark) {
   top: 50%;
   transform: translateY(-50%);
 }
+
+/* ── Underline input — animated gradient border on focus ──────
+   Usá: <div class="form-field-line"> <input class="input-line"> <span class="input-line-border"> </div>
+   Agregá "has-error" al wrapper para estado de error.
+───────────────────────────────────────────────────────────── */
+.form-field-line {
+  position: relative;
+}
+.input-line {
+  color: var(--s50);
+  font-size: 0.95rem;
+  background-color: transparent;
+  width: 100%;
+  padding-inline: 0.25em;
+  padding-block: 0.75em;
+  border: none;
+  border-bottom: 2px solid var(--s600);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.input-line::placeholder { color: var(--s400); }
+.input-line-border {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0%;
+  height: 3px;
+  background: linear-gradient(90deg, #FF6464 0%, #FFBF59 50%, #47C9FF 100%);
+  transition: width 0.4s cubic-bezier(0.42, 0, 0.58, 1.00);
+  pointer-events: none;
+}
+.form-field-line:focus-within .input-line-border { width: 100%; }
+.form-field-line.has-error .input-line { border-bottom-color: #f43f5e; }
+.form-field-line.has-error .input-line-border { background: #f43f5e; }
