@@ -113,8 +113,17 @@ function extractAmounts(text: string): Array<{ raw: string; value: number }> {
 
 /** Look for the TOTAL line in OCR text (most reliable amount) */
 function findTotalAmount(text: string): number | null {
-  const totalKeywords = /\b(total|subtotal|importe|a\s+pagar|monto\s+total|suma|ticket\s+total|amount\s+due)\b/i;
   const lines = text.split(/\n/);
+  // First pass: look for exact TOTAL (not sub/ticket/partial) line
+  const strictTotal = /^\s*(?:6\s+)?total\s*:?\s*\$?\s*[\d]/i;
+  for (const line of lines) {
+    if (strictTotal.test(line) && !/subtotal|parcial/i.test(line)) {
+      const amounts = extractAmounts(line);
+      if (amounts.length > 0) return Math.max(...amounts.map(a => a.value));
+    }
+  }
+  // Second pass: any line with total keyword
+  const totalKeywords = /\b(total|importe|a\s+pagar|monto\s+total|suma|ticket\s+total|amount\s+due)\b/i;
   for (const line of lines) {
     if (totalKeywords.test(line)) {
       const amounts = extractAmounts(line);
@@ -125,23 +134,109 @@ function findTotalAmount(text: string): number | null {
 }
 
 // ── AI analysis helpers ────────────────────────────────────────────────────────
+
+/** Extract merchant name from OCR text using common receipt patterns */
+function extractMerchant(text: string): string | null {
+  // Known UY merchants (case-insensitive logo/header line)
+  const KNOWN = [
+    'farmashop', 'tienda inglesa', 'disco', 'devoto', 'géant', 'geant', 'tata',
+    'multiahorro', 'walmart', 'carrefour', 'jumbo', 'fresh market',
+    'mercadopago', 'uber', 'netflix', 'spotify', 'airbnb', 'pedidosya',
+    'oca ', 'brou', 'itaú', 'itau', 'santander', 'bbva', 'hsbc',
+    'ancap', 'antel', 'ute ', 'ose ',
+    'farmacity', 'macrocard', 'geant', 'metraje', 'zara', 'h & m', 'h&m',
+    'carter', 'lojas renner', 'renner',
+  ];
+  const lower = text.toLowerCase();
+  for (const name of KNOWN) {
+    if (lower.includes(name)) {
+      // Capitalize properly
+      return name.trim().replace(/\b\w/g, c => c.toUpperCase());
+    }
+  }
+  // Heuristic: first non-empty line that looks like a business name (all-caps, short)
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  for (const line of lines.slice(0, 10)) {
+    // Pure uppercase line, 3-40 chars, no numbers
+    if (/^[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s&.*-]{2,39}$/.test(line) && !/\d/.test(line)) {
+      return line.replace(/\s+/g, ' ');
+    }
+  }
+  return null;
+}
+
+/** Extract date in YYYY-MM-DD from OCR text */
+function extractDate(text: string): string | null {
+  // DD/MM/YYYY or DD-MM-YYYY
+  const m1 = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/.exec(text);
+  if (m1) {
+    const d = m1[1].padStart(2, '0');
+    const mo = m1[2].padStart(2, '0');
+    const y = m1[3];
+    if (parseInt(mo) >= 1 && parseInt(mo) <= 12) return `${y}-${mo}-${d}`;
+  }
+  // YYYY-MM-DD
+  const m2 = /(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
+  return null;
+}
+
+/** Extract payment method from OCR text */
+function extractPaymentMethod(text: string): 'cash' | 'debit' | 'credit' | 'transfer' | 'other' | null {
+  const lower = text.toLowerCase();
+  if (/tarjeta.*cr[eé]d|cr[eé]dito/i.test(lower)) return 'credit';
+  if (/tarjeta.*d[eé]b|d[eé]bito/i.test(lower)) return 'debit';
+  if (/tarjeta\s*(pos|inalamb)/i.test(lower)) return 'debit'; // POS inalámbrico = debit card
+  if (/efectivo|contado(?!\s*diferido)|cash/i.test(lower)) return 'cash';
+  if (/transferencia|transfer/i.test(lower)) return 'transfer';
+  if (/tarjeta/i.test(lower)) return 'debit';
+  return null;
+}
+
+/** Guess category from merchant name and OCR text */
+function guessCategoryHint(merchant: string | null, text: string): string {
+  const m = (merchant ?? '').toLowerCase();
+  const t = text.toLowerCase();
+  if (/farmashop|farmacity|farmacia|farm[aá]cias?/i.test(m + t)) return 'health';
+  if (/disco|devoto|tienda inglesa|g[eé]ant|tata|multiahorro|supermercado|super\b/i.test(m + t)) return 'food';
+  if (/restaurante|pizza|burger|mcdonald|kfc|subway|cafe|cafeter[íi]a|bar\b/i.test(m + t)) return 'food';
+  if (/uber|taxi|cabify|pedidosya\s+envio|envio|flete/i.test(m + t)) return 'transport';
+  if (/ancap|nafta|gasolinera|combustible/i.test(m + t)) return 'transport';
+  if (/netflix|spotify|disney|hbo|prime\s*video|youtube\s*premium/i.test(m + t)) return 'entertainment';
+  if (/zara|h\s*&\s*m|carter|renner|metraje|ropa|indumentaria/i.test(m + t)) return 'shopping';
+  if (/antel|ute|ose|internet|celular|m[óo]vil/i.test(m + t)) return 'utilities';
+  return 'other';
+}
+
 function fallbackParse(ocrText: string): ParsedReceipt {
   const amounts = extractAmounts(ocrText);
+  // Prefer explicit TOTAL line, else max amount found
   const totalAmount = findTotalAmount(ocrText)
     ?? (amounts.length > 0 ? Math.max(...amounts.map(a => a.value)) : null);
-  const isuyu = /\$[Uu]|UYU|\bpesos?\b/i.test(ocrText);
+  const isuyu = /\$[Uu]|UYU|\bpesos?\b|\bUYU\b/i.test(ocrText);
   const isusd = /USD|\bd[oó]lares?\b/i.test(ocrText);
+
+  const merchant = extractMerchant(ocrText);
+  const date = extractDate(ocrText);
+  const paymentMethod = extractPaymentMethod(ocrText);
+  const categoryHint = guessCategoryHint(merchant, ocrText);
+  const description = merchant ?? (ocrText.replace(/\s+/g, ' ').trim().slice(0, 60) || null);
+  const confidence = (merchant && totalAmount && date) ? 0.7
+    : (merchant && totalAmount) ? 0.55
+    : totalAmount ? 0.35
+    : 0.2;
+
   return {
-    merchant: null,
+    merchant,
     isMultiItem: false,
     items: [],
-    description: ocrText.replace(/\s+/g, ' ').trim().slice(0, 60) || null,
+    description,
     amount: totalAmount,
     currency: isuyu ? 'UYU' : isusd ? 'USD' : 'UYU',
-    date: null,
-    categoryHint: null,
-    paymentMethod: null,
-    confidence: 0.2,
+    date,
+    categoryHint,
+    paymentMethod,
+    confidence,
   };
 }
 
