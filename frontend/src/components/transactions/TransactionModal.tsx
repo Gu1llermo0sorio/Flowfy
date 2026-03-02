@@ -73,6 +73,9 @@ export default function TransactionModal({ transaction, onClose }: Props) {
   const createMutation = useCreateTransaction();
   const updateMutation = useUpdateTransaction();
 
+  // Capture-first mode: new transactions start on capture screen
+  const [mode, setMode] = useState<'capture' | 'manual'>(isEdit ? 'manual' : 'capture');
+
   // Receipt & AI state
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -159,13 +162,12 @@ export default function TransactionModal({ transaction, onClose }: Props) {
     return found?.id ?? null;
   };
 
-  const applyAIResults = () => {
+  const applyAIResults = (switchToManual = false) => {
     if (!aiResult) return;
     if (aiResult.description) setValue('description', aiResult.description);
     if (aiResult.amount && aiResult.amount > 0) setValue('amount', aiResult.amount);
     if (aiResult.currency === 'UYU' || aiResult.currency === 'USD') setValue('currency', aiResult.currency);
     if (aiResult.date) {
-      // Convert YYYY-MM-DD to datetime-local format
       const d = new Date(aiResult.date + 'T12:00:00');
       if (!isNaN(d.getTime())) setValue('date', format(d, "yyyy-MM-dd'T'HH:mm"));
     }
@@ -175,7 +177,10 @@ export default function TransactionModal({ transaction, onClose }: Props) {
     const catId = matchCategoryId(aiResult.categoryHint);
     if (catId) setValue('categoryId', catId);
     setAiApplied(true);
-    addToast({ type: 'success', message: 'Formulario completado con los datos detectados' });
+    if (switchToManual) {
+      setMode('manual');
+      addToast({ type: 'success', message: 'Formulario completado — revisá y guardá' });
+    }
   };
 
   const onSubmit = async (values: FormValues) => {
@@ -230,9 +235,21 @@ export default function TransactionModal({ transaction, onClose }: Props) {
         >
           {/* Header */}
           <div className="flex items-center justify-between p-5 border-b border-surface-700 sticky top-0 bg-surface-900 z-10">
-            <h2 className="text-lg font-bold text-white">
-              {isEdit ? 'Editar movimiento' : 'Nuevo movimiento'}
-            </h2>
+            <div className="flex items-center gap-2">
+              {mode === 'manual' && !isEdit && (
+                <button
+                  type="button"
+                  onClick={() => setMode('capture')}
+                  className="p-1 rounded-lg text-surface-400 hover:text-white hover:bg-surface-700 transition-colors mr-1"
+                  title="Volver a captura"
+                >
+                  <Camera size={16} />
+                </button>
+              )}
+              <h2 className="text-lg font-bold text-white">
+                {isEdit ? 'Editar movimiento' : mode === 'capture' ? 'Nuevo movimiento' : 'Ingreso manual'}
+              </h2>
+            </div>
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-surface-700 transition-colors"
@@ -241,7 +258,146 @@ export default function TransactionModal({ transaction, onClose }: Props) {
             </button>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
+          {/* ── CAPTURE SCREEN (default for new transactions) ── */}
+          {mode === 'capture' && (
+            <div className="p-5 space-y-5">
+              {/* Drop zone */}
+              {!receiptPreview ? (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex flex-col items-center gap-4 py-14 rounded-2xl border-2 border-dashed border-surface-600 text-surface-400 hover:border-primary-500/60 hover:text-primary-400 transition-colors group"
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-surface-800 group-hover:bg-primary-500/10 flex items-center justify-center transition-colors">
+                    <Camera className="w-8 h-8" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-semibold">Subir foto o archivo del ticket</p>
+                    <p className="text-xs text-surface-500 mt-1">La IA detecta comercio, monto, fecha y categoría</p>
+                  </div>
+                  <span className="flex items-center gap-1.5 text-xs bg-primary-500/10 text-primary-400 px-3 py-1.5 rounded-full">
+                    <Sparkles className="w-3 h-3" /> Analizar con IA
+                  </span>
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  {/* Preview */}
+                  <div className="relative rounded-xl overflow-hidden border border-surface-700">
+                    <img src={receiptPreview} alt="Comprobante" className="w-full max-h-48 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => { setReceiptFile(null); setReceiptPreview(null); setAiStatus('idle'); setAiResult(null); setAiApplied(false); }}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white hover:bg-black/80"
+                    >
+                      <X size={14} />
+                    </button>
+                    <div className="absolute top-2 left-2">
+                      {aiStatus === 'analyzing' && (
+                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/70 text-primary-300 text-[11px] font-medium">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Analizando…
+                        </span>
+                      )}
+                      {aiStatus === 'done' && (
+                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/70 text-emerald-300 text-[11px] font-medium">
+                          <Sparkles className="w-3 h-3" /> IA lista
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Analyzing */}
+                  {aiStatus === 'analyzing' && (
+                    <div className="flex items-center gap-3 p-4 rounded-xl bg-primary-500/10 border border-primary-500/20">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary-400 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-primary-300">Analizando con IA…</p>
+                        <p className="text-xs text-surface-500 mt-0.5">Claude está leyendo el comprobante</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AI result */}
+                  {aiStatus === 'done' && aiResult && (
+                    <div className="p-4 rounded-xl bg-surface-800 border border-surface-700 space-y-3">
+                      <div className="flex items-center gap-1.5 text-sm font-semibold text-surface-200">
+                        <Sparkles className="w-4 h-4 text-primary-400" />
+                        Datos detectados
+                        <span className="text-surface-500 text-xs font-normal ml-1">
+                          {Math.round((aiResult.confidence ?? 0) * 100)}% confianza
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 text-xs">
+                        {aiResult.merchant && (
+                          <div className="col-span-2 flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-surface-700">
+                            <span className="text-surface-400 shrink-0">Comercio</span>
+                            <span className="font-medium text-surface-100 truncate">{aiResult.merchant}</span>
+                          </div>
+                        )}
+                        {aiResult.amount != null && aiResult.amount > 0 && (
+                          <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-surface-700">
+                            <span className="text-surface-400">Monto</span>
+                            <span className="font-mono font-semibold text-emerald-400">{aiResult.amount.toLocaleString('es-UY')} {aiResult.currency ?? ''}</span>
+                          </div>
+                        )}
+                        {aiResult.date && (
+                          <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-surface-700">
+                            <span className="text-surface-400">Fecha</span>
+                            <span className="font-medium text-surface-100">{aiResult.date}</span>
+                          </div>
+                        )}
+                        {aiResult.categoryHint && (
+                          <div className="col-span-2 flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-surface-700">
+                            <span className="text-surface-400">Categoría</span>
+                            <span className="font-medium text-surface-100 capitalize">{aiResult.categoryHint}</span>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyAIResults(true)}
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold transition-colors"
+                      >
+                        <Zap className="w-4 h-4" /> Revisar y guardar
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Error */}
+                  {aiStatus === 'error' && (
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                      <div className="flex items-center gap-2 text-xs text-rose-300">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        No se pudo analizar el comprobante
+                      </div>
+                      <button type="button" onClick={() => receiptFile && handleAnalyzeReceipt(receiptFile)}
+                        className="text-xs text-primary-400 hover:text-primary-300 underline ml-2 shrink-0">
+                        Reintentar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ''; }}
+              />
+
+              {/* Manual entry link */}
+              <button
+                type="button"
+                onClick={() => setMode('manual')}
+                className="w-full text-center text-sm text-surface-400 hover:text-surface-200 py-2 transition-colors"
+              >
+                Ingresar manualmente →
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit(onSubmit)} className={`p-5 space-y-4 ${mode === 'capture' ? 'hidden' : ''}`}>
             {/* Type toggle */}
             <Controller
               name="type"
@@ -592,7 +748,7 @@ export default function TransactionModal({ transaction, onClose }: Props) {
                         {!aiApplied ? (
                           <button
                             type="button"
-                            onClick={applyAIResults}
+                            onClick={() => applyAIResults()}
                             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold transition-colors"
                           >
                             <Zap className="w-3.5 h-3.5" />
@@ -601,7 +757,7 @@ export default function TransactionModal({ transaction, onClose }: Props) {
                         ) : (
                           <button
                             type="button"
-                            onClick={applyAIResults}
+                            onClick={() => applyAIResults()}
                             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-surface-700 hover:bg-surface-600 text-surface-300 text-xs font-medium transition-colors"
                           >
                             <RefreshCw className="w-3 h-3" />

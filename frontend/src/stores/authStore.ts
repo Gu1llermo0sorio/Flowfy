@@ -69,7 +69,11 @@ export const useAuthStore = create<AuthStore>()(
           const { data } = await apiClient.post<{
             user: User;
             accessToken: string;
+            refreshToken: string;
           }>('/auth/login', payload);
+
+          localStorage.setItem('accessToken', data.accessToken);
+          if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
 
           set({
             user: enrichUser(data.user),
@@ -91,7 +95,11 @@ export const useAuthStore = create<AuthStore>()(
           const { data } = await apiClient.post<{
             user: User;
             accessToken: string;
+            refreshToken: string;
           }>('/auth/register', payload);
+
+          localStorage.setItem('accessToken', data.accessToken);
+          if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
 
           set({
             user: enrichUser(data.user),
@@ -109,10 +117,13 @@ export const useAuthStore = create<AuthStore>()(
 
       logout: async () => {
         try {
-          await apiClient.post('/auth/logout');
+          // Send stored refresh token in body for Safari ITP fallback
+          const refreshToken = localStorage.getItem('refreshToken');
+          await apiClient.post('/auth/logout', refreshToken ? { refreshToken } : {});
         } catch {
           // ignore errors — always clear local state
         }
+        localStorage.removeItem('refreshToken');
         get().reset();
       },
 

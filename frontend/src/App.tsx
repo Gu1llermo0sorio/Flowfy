@@ -79,7 +79,23 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 // Onboarding gate — shows wizard once for new authenticated users
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore((s) => s.accessToken);
-  const [onboarded, setOnboarded] = useState(() => !!localStorage.getItem(ONBOARDED_KEY));
+  const [onboarded, setOnboarded] = useState(() => {
+    // Already done if the key is set
+    if (localStorage.getItem(ONBOARDED_KEY)) return true;
+    // Auto-skip for existing users: if zustand-persist already has a user
+    // stored (flowfy-auth), they've used the app before → skip wizard
+    try {
+      const stored = localStorage.getItem('flowfy-auth');
+      const parsed = JSON.parse(stored ?? '{}') as { state?: { user?: { id?: string } } };
+      if (parsed?.state?.user?.id) {
+        localStorage.setItem(ONBOARDED_KEY, '1');
+        return true;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return false;
+  });
 
   if (accessToken && !onboarded) {
     return <OnboardingWizard onComplete={() => setOnboarded(true)} />;

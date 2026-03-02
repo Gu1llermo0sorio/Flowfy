@@ -64,7 +64,7 @@ export default function Sidebar() {
               exit={{ opacity: 0, scale: 0.8, x: -10 }}
               transition={{ type: 'spring', stiffness: 280, damping: 22 }}
             >
-              <FlowfyLogo className="h-9 w-auto" />
+              <FlowfyLogo className="h-12 w-auto" />
             </motion.div>
           ) : (
             <motion.div

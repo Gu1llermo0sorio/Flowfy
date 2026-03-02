@@ -49,9 +49,16 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await apiClient.post<{ accessToken: string }>('/auth/refresh');
+        // Send stored refresh token in body as fallback for Safari ITP
+        // (Safari blocks cross-origin httpOnly cookies)
+        const storedRT = localStorage.getItem('refreshToken');
+        const { data } = await apiClient.post<{ accessToken: string; refreshToken?: string }>(
+          '/auth/refresh',
+          storedRT ? { refreshToken: storedRT } : {}
+        );
         const newToken = data.accessToken;
         localStorage.setItem('accessToken', newToken);
+        if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
 
         // Replay queued requests
         refreshQueue.forEach((cb) => cb(newToken));
@@ -62,6 +69,7 @@ apiClient.interceptors.response.use(
       } catch {
         // Refresh failed — clear auth state
         localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
         refreshQueue = [];
         window.dispatchEvent(new Event('auth:logout'));
         return Promise.reject(error);

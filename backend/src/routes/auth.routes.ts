@@ -65,7 +65,8 @@ authRouter.post('/register', validate(registerSchema), async (req, res, next) =>
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const result = await prisma.$transaction(async (tx) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await prisma.$transaction(async (tx: any) => {
       const family = await tx.family.create({ data: { name: familyName } });
       const user = await tx.user.create({
         data: { email, passwordHash, name, familyId: family.id, role: 'owner' },
@@ -89,6 +90,7 @@ authRouter.post('/register', validate(registerSchema), async (req, res, next) =>
       success: true,
       message: '¡Bienvenido a Flowfy! Tu cuenta fue creada exitosamente.',
       accessToken,
+      refreshToken, // also in body for Safari ITP fallback
       user: {
         id: result.user.id,
         email: result.user.email,
@@ -138,6 +140,7 @@ authRouter.post('/login', validate(loginSchema), async (req, res, next) => {
       success: true,
       message: `¡Hola, ${user.name}!`,
       accessToken,
+      refreshToken, // also in body for Safari ITP fallback
       user: {
         id: user.id,
         email: user.email,
@@ -160,7 +163,8 @@ authRouter.post('/login', validate(loginSchema), async (req, res, next) => {
 // ── POST /api/auth/refresh ─────────────────────────────────────────────────────
 authRouter.post('/refresh', async (req, res, next) => {
   try {
-    const token = req.cookies?.refreshToken as string | undefined;
+    // Accept token from cookie (standard) OR from body (Safari ITP fallback)
+    const token: string | undefined = req.cookies?.refreshToken ?? req.body?.refreshToken;
     if (!token) throw createError('Refresh token requerido', 401, 'NO_REFRESH_TOKEN');
 
     const user = await validateRefreshToken(token);
@@ -177,7 +181,8 @@ authRouter.post('/refresh', async (req, res, next) => {
 
     setRefreshCookie(res, newRefreshToken, true);
 
-    res.json({ success: true, accessToken: newAccessToken });
+    // Also return new refresh token in body so client can update localStorage
+    res.json({ success: true, accessToken: newAccessToken, refreshToken: newRefreshToken });
   } catch (err) {
     next(err);
   }
@@ -186,7 +191,8 @@ authRouter.post('/refresh', async (req, res, next) => {
 // ── POST /api/auth/logout ──────────────────────────────────────────────────────
 authRouter.post('/logout', async (req, res, next) => {
   try {
-    const token = req.cookies?.refreshToken as string | undefined;
+    // Accept token from cookie OR body (Safari ITP fallback)
+    const token: string | undefined = req.cookies?.refreshToken ?? req.body?.refreshToken;
     if (token) await revokeRefreshToken(token);
 
     res.clearCookie('refreshToken', { path: '/api/auth' });
@@ -235,7 +241,7 @@ authRouter.get('/me', authenticate, async (req: AuthRequest, res, next) => {
         level: user.level,
         streakDays: user.streakDays,
         lastActive: user.lastActive,
-        badges: user.userBadges.map((ub) => ({
+        badges: user.userBadges.map((ub: { badge: object; unlockedAt: Date }) => ({
           ...ub.badge,
           unlockedAt: ub.unlockedAt,
         })),

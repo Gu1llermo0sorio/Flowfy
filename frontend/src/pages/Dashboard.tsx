@@ -73,12 +73,12 @@ export default function Dashboard() {
       {/* Greeting */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">
-            Hola, {user?.name?.split(' ')[0]} 👋
-          </h1>
-          <p className="text-surface-400 text-sm mt-0.5">
+          <p className="text-xs text-surface-500 uppercase tracking-widest font-medium">
             {getMonthName(month)} {year}
           </p>
+          <h1 className="text-lg font-semibold text-surface-100 mt-0.5">
+            Hola, {user?.name?.split(' ')[0]}
+          </h1>
         </div>
         <button
           onClick={() => navigate('/transactions')}

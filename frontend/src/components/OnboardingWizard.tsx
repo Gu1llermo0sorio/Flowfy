@@ -74,13 +74,19 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      await apiClient.patch('/family/settings', {
+      // Only owners can update family settings; partners skip the API call
+      if (user?.role !== 'owner' && user?.role !== 'ADMIN') return;
+      await apiClient.patch('/family', {
         name: state.familyName || undefined,
         currency: state.currency,
       });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['family'] });
+      setStepIdx(3);
+    },
+    onError: () => {
+      // API failure is non-blocking — proceed to done step regardless
       setStepIdx(3);
     },
   });
@@ -106,11 +112,11 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 p-4 overflow-y-auto">
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="card w-full max-w-sm p-6"
+        className="card w-full max-w-sm p-6 my-auto"
       >
         {/* Progress dots */}
         <div className="flex justify-center gap-2 mb-6">
@@ -153,30 +159,30 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
                   value={state.familyName}
                   onChange={(e) => setState((s) => ({ ...s, familyName: e.target.value }))}
                   placeholder="Ej: Familia García"
-                  className="input w-full"
+                  className="w-full px-3 py-2.5 rounded-xl bg-surface-700 border border-surface-600 text-surface-50 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
                   autoFocus
                 />
               </div>
             )}
 
             {stepIdx === 2 && (
-              <div className="space-y-2">
+              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
                 {CURRENCIES.map((c) => (
                   <button
                     key={c.code}
                     onClick={() => setState((s) => ({ ...s, currency: c.code }))}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-colors text-left ${
+                    className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-colors text-left ${
                       state.currency === c.code
                         ? 'border-primary-500 bg-primary-500/10'
                         : 'border-surface-700 hover:border-surface-600'
                     }`}
                   >
-                    <span className="text-xl">{c.flag}</span>
-                    <div>
+                    <span className="text-lg w-8 text-center flex-shrink-0">{c.flag}</span>
+                    <div className="flex-1">
                       <p className="text-sm font-medium text-surface-100">{c.code}</p>
                       <p className="text-xs text-surface-400">{c.label}</p>
                     </div>
-                    {state.currency === c.code && <CheckCircle className="w-4 h-4 text-primary-400 ml-auto" />}
+                    {state.currency === c.code && <CheckCircle className="w-4 h-4 text-primary-400 flex-shrink-0" />}
                   </button>
                 ))}
               </div>
