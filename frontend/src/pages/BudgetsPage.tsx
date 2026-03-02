@@ -84,11 +84,22 @@ function BudgetCard({ budget, onDelete, onEdit }: {
   );
 }
 
+const PRESET_ICONS = [
+  '🛒','🍔','🚗','🏠','💊','👕','🎮','✈️','📚','🐾',
+  '🎵','💼','🏋️','🎁','💡','🍷','☕','🧴','🌿','💰',
+  '🏥','🎓','🔧','📱','🐶','🧹','🛁','🏖️','🎭','❤️',
+];
+const PRESET_COLORS = [
+  '#0d9488','#6366f1','#f59e0b','#ef4444','#10b981',
+  '#8b5cf6','#ec4899','#0ea5e9','#f97316','#84cc16',
+  '#06b6d4','#a855f7','#64748b','#e11d48','#16a34a',
+];
+
 function NewCategoryModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const createCategory = useCreateCategory();
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<CategoryFormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<CategoryFormData>({
     resolver: zodResolver(categorySchema),
-    defaultValues: { name: '', nameEs: '', icon: '🏷️', color: '#0d9488' },
+    defaultValues: { name: '', nameEs: '', icon: '🛒', color: '#0d9488' },
   });
   const icon = watch('icon');
   const color = watch('color');
@@ -101,36 +112,72 @@ function NewCategoryModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }} className="card w-full max-w-sm p-6 m-4">
+      <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }} className="card w-full max-w-sm p-5 m-4">
+        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-bold text-white">Nueva categoría</h3>
-          <button onClick={onClose} className="text-surface-400 hover:text-white"><X size={18} /></button>
+          <button onClick={onClose} className="text-surface-400 hover:text-white transition-colors"><X size={16} /></button>
         </div>
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-surface-800 border border-surface-700 mb-4">
-          <span className="text-3xl">{icon || '🏷️'}</span>
-          <div>
-            <p className="text-sm font-semibold text-white">{watch('nameEs') || 'Nombre'}</p>
-            <span className="inline-block w-3 h-3 rounded-full mt-0.5" style={{ background: color }} />
+
+        {/* Preview pill */}
+        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl mb-4" style={{ backgroundColor: color + '18', border: `1px solid ${color}40` }}>
+          <span className="text-2xl leading-none">{icon}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{watch('nameEs') || 'Nombre de categoría'}</p>
+            <div className="flex items-center gap-1 mt-0.5">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+              <span className="text-[11px] text-surface-400 font-mono">{color}</span>
+            </div>
           </div>
         </div>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Name */}
           <div>
-            <label className="text-xs text-surface-300 mb-1 block">Nombre en español *</label>
+            <label className="text-xs text-surface-400 mb-1.5 block font-medium">Nombre</label>
             <input {...register('nameEs')} placeholder="Ej: Ropa y calzado" className="input w-full text-sm" />
             {errors.nameEs && <p className="text-xs text-rose-400 mt-1">{errors.nameEs.message}</p>}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-surface-300 mb-1 block">Emoji *</label>
-              <input {...register('icon')} placeholder="🏷️" className="input w-full text-center text-lg" maxLength={4} />
-              {errors.icon && <p className="text-xs text-rose-400 mt-1">{errors.icon.message}</p>}
-            </div>
-            <div>
-              <label className="text-xs text-surface-300 mb-1 block">Color *</label>
-              <input {...register('color')} type="color" className="w-full h-10 rounded-xl border border-surface-700 bg-surface-900 cursor-pointer p-1" />
+
+          {/* Icon picker */}
+          <div>
+            <label className="text-xs text-surface-400 mb-1.5 block font-medium">Ícono</label>
+            <div className="grid grid-cols-10 gap-1 p-2 rounded-xl bg-surface-800 border border-surface-700">
+              {PRESET_ICONS.map(e => (
+                <button
+                  key={e} type="button"
+                  onClick={() => setValue('icon', e, { shouldValidate: true })}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-base transition-all hover:scale-110"
+                  style={icon === e ? { backgroundColor: color + '35', boxShadow: `0 0 0 2px ${color}` } : {}}
+                >
+                  {e}
+                </button>
+              ))}
             </div>
           </div>
-          <button type="submit" disabled={isSubmitting || createCategory.isPending} className="btn-primary w-full mt-1">
+
+          {/* Color palette */}
+          <div>
+            <label className="text-xs text-surface-400 mb-1.5 block font-medium">Color</label>
+            <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-surface-800 border border-surface-700">
+              {PRESET_COLORS.map(c => (
+                <button
+                  key={c} type="button"
+                  onClick={() => setValue('color', c, { shouldValidate: true })}
+                  className="w-6 h-6 rounded-full transition-all flex-shrink-0 hover:scale-110"
+                  style={{ backgroundColor: c, boxShadow: color === c ? `0 0 0 2px var(--s800), 0 0 0 4px ${c}` : 'none', transform: color === c ? 'scale(1.15)' : undefined }}
+                  title={c}
+                />
+              ))}
+              {/* Custom color */}
+              <label className="w-6 h-6 rounded-full border-2 border-dashed border-surface-600 hover:border-surface-400 cursor-pointer flex items-center justify-center transition-colors overflow-hidden flex-shrink-0" title="Color personalizado">
+                <input type="color" value={color} onChange={e => setValue('color', e.target.value, { shouldValidate: true })} className="opacity-0 absolute w-px h-px" />
+                <Plus size={10} className="text-surface-500" />
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" disabled={isSubmitting || createCategory.isPending} className="btn-primary w-full">
             {isSubmitting || createCategory.isPending ? 'Creando…' : 'Crear categoría'}
           </button>
         </form>
