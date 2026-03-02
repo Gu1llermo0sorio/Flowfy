@@ -62,3 +62,25 @@ export function useDeleteBudget(month: number, year: number) {
     },
   });
 }
+
+// ── Category creation ─────────────────────────────────────────────────────────
+
+export interface CategoryPayload {
+  name: string;
+  nameEs: string;
+  icon: string;
+  color: string;
+}
+
+export function useCreateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: CategoryPayload) => {
+      const { data } = await apiClient.post<{ success: boolean; data: Category }>('/categories', payload);
+      return data.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['categories'] });
+    },
+  });
+}

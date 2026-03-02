@@ -3,34 +3,56 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Loader2, TrendingUp, TrendingDown, Camera, Sparkles, Zap, RefreshCw, AlertCircle } from 'lucide-react';
+import { X, Check, Loader2, TrendingUp, TrendingDown, Camera, Sparkles, Zap, RefreshCw, AlertCircle, ShoppingCart, PieChart, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import clsx from 'clsx';
 import { useCategories, useCreateTransaction, useUpdateTransaction, type TxPayload } from '../../hooks/useTransactions';
+import { useBudgets } from '../../hooks/useBudgets';
 import { useUIStore } from '../../stores/uiStore';
 import { amountToCentavos, centavosToAmount } from '../../lib/formatters';
 import { apiClient } from '../../lib/apiClient';
 import type { Transaction } from '../../types';
 
-// ── AI parsed receipt type ─────────────────────────────────────────────────────
+// ── AI parsed receipt types ────────────────────────────────────────────────────
+interface ParsedReceiptItem {
+  description: string;
+  amount: number;
+  categoryHint: string;
+}
+
 interface ParsedReceipt {
   merchant: string | null;
+  isMultiItem: boolean;
+  items: ParsedReceiptItem[];
   description: string | null;
   amount: number | null;
   currency: 'UYU' | 'USD' | 'EUR' | null;
   date: string | null;          // YYYY-MM-DD
-  categoryHint: string | null;  // food|transport|entertainment|health|shopping|utilities|education|housing|other
+  categoryHint: string | null;
   paymentMethod: string | null;
   confidence: number;
+}
+
+// Multi-item state shape
+interface MultiItem {
+  description: string;
+  amount: number;
+  categoryHint: string;
+  categoryId: string;
+  keep: boolean;
 }
 
 // Category hint keyword map (Spanish category names)
 const HINT_KEYWORDS: Record<string, string[]> = {
   food:          ['comida', 'alimenta', 'supermercado', 'restaurante', 'almacén', 'delivery', 'bebida', 'café', 'panadería', 'carnicería'],
+  cleaning:      ['limpieza', 'lavandina', 'detergente', 'jabón', 'escoba', 'trapo', 'desinfect'],
+  hygiene:       ['higiene', 'shampoo', 'desodorante', 'afeit', 'papel higiénico', 'pañal', 'cuidado'],
+  snacks:        ['snack', 'golosina', 'dulce', 'galleta', 'chicle', 'caramelo', 'chocolate'],
+  electronics:   ['electrónico', 'pila', 'batería', 'cable', 'tecnología'],
   transport:     ['transporte', 'uber', 'taxi', 'combustible', 'nafta', 'gasolina', 'bus', 'boletera', 'peaje', 'estacionamiento'],
   entertainment: ['entreten', 'cine', 'streaming', 'netflix', 'juego', 'deporte', 'salida', 'recreo'],
   health:        ['salud', 'farmacia', 'médico', 'doctor', 'hospital', 'clínica', 'medicamento'],
-  shopping:      ['ropa', 'compra', 'tiend', 'electrónico', 'calzado', 'zapatería', 'ferretería'],
+  shopping:      ['ropa', 'compra', 'tiend', 'calzado', 'zapatería', 'ferretería', 'bazar'],
   utilities:     ['servicio', 'luz', 'agua', 'internet', 'teléfono', 'celular', 'gas'],
   education:     ['educación', 'estudio', 'libro', 'curso', 'universidad', 'escuela'],
   housing:       ['alquiler', 'vivienda', 'arriendo', 'expensas', 'cuota'],
@@ -74,7 +96,7 @@ export default function TransactionModal({ transaction, onClose }: Props) {
   const updateMutation = useUpdateTransaction();
 
   // Capture-first mode: new transactions start on capture screen
-  const [mode, setMode] = useState<'capture' | 'manual'>(isEdit ? 'manual' : 'capture');
+  const [mode, setMode] = useState<'capture' | 'manual' | 'multi-review'>(isEdit ? 'manual' : 'capture');
 
   // Receipt & AI state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +105,14 @@ export default function TransactionModal({ transaction, onClose }: Props) {
   const [aiStatus, setAiStatus] = useState<'idle' | 'analyzing' | 'done' | 'error'>('idle');
   const [aiResult, setAiResult] = useState<ParsedReceipt | null>(null);
   const [aiApplied, setAiApplied] = useState(false);
+
+  // Multi-item state (supermarket receipts)
+  const [multiItems, setMultiItems] = useState<MultiItem[]>([]);
+  const [savingMulti, setSavingMulti] = useState(false);
+
+  // Budget impact: get current month budgets to show impact preview
+  const now = new Date();
+  const { data: currentBudgets = [] } = useBudgets(now.getMonth() + 1, now.getFullYear());
 
   const {
     register,
@@ -139,16 +169,61 @@ export default function TransactionModal({ transaction, onClose }: Props) {
     setAiStatus('analyzing');
     setAiResult(null);
     setAiApplied(false);
+    setMultiItems([]);
     try {
       const formData = new FormData();
       formData.append('file', file);
       const { data } = await apiClient.post('/documents/analyze', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setAiResult(data?.data ?? null);
+      const result: ParsedReceipt = data?.data ?? null;
+      setAiResult(result);
       setAiStatus('done');
+      // Auto-switch to multi-review if supermarket receipt detected
+      if (result?.isMultiItem && result.items?.length > 0) {
+        const resolved = result.items.map(item => ({
+          ...item,
+          categoryId: matchCategoryId(item.categoryHint) ?? '',
+          keep: true,
+        }));
+        setMultiItems(resolved);
+        setMode('multi-review');
+      }
     } catch {
       setAiStatus('error');
+    }
+  };
+
+  // Save all kept multi-items as individual transactions
+  const handleSaveMulti = async () => {
+    const toSave = multiItems.filter(i => i.keep);
+    if (!toSave.length) return;
+    setSavingMulti(true);
+    const txDate = aiResult?.date
+      ? new Date(aiResult.date + 'T12:00:00').toISOString()
+      : new Date().toISOString();
+    const currency = (aiResult?.currency === 'USD' ? 'USD' : 'UYU') as 'UYU' | 'USD';
+    try {
+      await Promise.all(toSave.map(item =>
+        createMutation.mutateAsync({
+          type: 'expense',
+          description: aiResult?.merchant
+            ? `${aiResult.merchant} — ${item.description}`
+            : item.description,
+          amount: amountToCentavos(item.amount),
+          currency,
+          date: txDate,
+          categoryId: item.categoryId,
+          tags: [],
+          isRecurring: false,
+        })
+      ));
+      addToast({ type: 'success', message: `${toSave.length} gastos registrados +${toSave.length * 10} XP 🎉` });
+      onClose();
+    } catch {
+      addToast({ type: 'error', message: 'Error al guardar los movimientos' });
+    } finally {
+      setSavingMulti(false);
     }
   };
 
@@ -247,7 +322,7 @@ export default function TransactionModal({ transaction, onClose }: Props) {
           {/* Header */}
           <div className="flex items-center justify-between p-5 border-b border-surface-700 sticky top-0 bg-surface-900 z-10">
             <div className="flex items-center gap-2">
-              {mode === 'manual' && !isEdit && (
+              {(mode === 'manual' || mode === 'multi-review') && !isEdit && (
                 <button
                   type="button"
                   onClick={() => setMode('capture')}
@@ -258,7 +333,7 @@ export default function TransactionModal({ transaction, onClose }: Props) {
                 </button>
               )}
               <h2 className="text-lg font-bold text-white">
-                {isEdit ? 'Editar movimiento' : mode === 'capture' ? 'Nuevo movimiento' : 'Ingreso manual'}
+                {isEdit ? 'Editar movimiento' : mode === 'capture' ? 'Nuevo movimiento' : mode === 'multi-review' ? 'Revisá los gastos' : 'Ingreso manual'}
               </h2>
             </div>
             <button
@@ -419,7 +494,143 @@ export default function TransactionModal({ transaction, onClose }: Props) {
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className={`${mode === 'capture' ? 'hidden' : ''} pb-5`}>
+          {/* ── MULTI-ITEM REVIEW SCREEN (supermarket receipts) ── */}
+          {mode === 'multi-review' && (
+            <div className="p-5 space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-primary-500/15 flex items-center justify-center">
+                    <ShoppingCart size={16} className="text-primary-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{aiResult?.merchant ?? 'Ticket de supermercado'}</p>
+                    <p className="text-[11px] text-surface-400">
+                      {aiResult?.date ?? format(new Date(), 'yyyy-MM-dd')} · {aiResult?.currency ?? 'UYU'}
+                      {aiResult?.paymentMethod && ` · ${aiResult.paymentMethod}`}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs bg-primary-500/10 text-primary-400 px-2.5 py-1 rounded-full font-medium">
+                  {multiItems.filter(i => i.keep).length} gastos
+                </span>
+              </div>
+
+              {/* Items list */}
+              <div className="space-y-2">
+                {multiItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className={`rounded-xl border transition-all ${
+                      item.keep
+                        ? 'border-surface-600 bg-surface-800'
+                        : 'border-surface-700/40 bg-surface-900/40 opacity-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 p-3">
+                      {/* Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => setMultiItems(prev => prev.map((it, i) => i === idx ? { ...it, keep: !it.keep } : it))}
+                        className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${
+                          item.keep
+                            ? 'border-primary-500 bg-primary-500'
+                            : 'border-surface-600 bg-transparent'
+                        }`}
+                      >
+                        {item.keep && <Check size={10} className="text-white" />}
+                      </button>
+
+                      {/* Description */}
+                      <input
+                        type="text"
+                        value={item.description}
+                        onChange={e => setMultiItems(prev => prev.map((it, i) => i === idx ? { ...it, description: e.target.value } : it))}
+                        className="flex-1 min-w-0 bg-transparent text-sm text-surface-100 placeholder-surface-500 focus:outline-none"
+                        disabled={!item.keep}
+                      />
+
+                      {/* Amount */}
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={item.amount}
+                        onChange={e => setMultiItems(prev => prev.map((it, i) => i === idx ? { ...it, amount: parseFloat(e.target.value) || 0 } : it))}
+                        className="w-20 bg-surface-700 rounded-lg px-2 py-1 text-xs font-mono text-emerald-400 text-right focus:outline-none focus:ring-1 focus:ring-primary-500/40"
+                        disabled={!item.keep}
+                      />
+
+                      {/* Delete */}
+                      <button
+                        type="button"
+                        onClick={() => setMultiItems(prev => prev.filter((_, i) => i !== idx))}
+                        className="text-surface-600 hover:text-rose-400 transition-colors flex-shrink-0"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+
+                    {/* Category selector */}
+                    {item.keep && (
+                      <div className="px-3 pb-3 pt-0">
+                        <select
+                          value={item.categoryId}
+                          onChange={e => setMultiItems(prev => prev.map((it, i) => i === idx ? { ...it, categoryId: e.target.value } : it))}
+                          className="w-full bg-surface-900 border border-surface-700 rounded-lg px-2.5 py-1.5 text-xs text-surface-200 focus:outline-none focus:ring-1 focus:ring-primary-500/40"
+                        >
+                          <option value="">Seleccioná categoría...</option>
+                          {categories.map(cat => (
+                            <option key={cat.id} value={cat.id}>{cat.icon} {cat.nameEs}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Total */}
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs text-surface-400">
+                  Total seleccionado
+                </span>
+                <span className="text-sm font-semibold font-mono text-emerald-400">
+                  $ {multiItems.filter(i => i.keep).reduce((s, i) => s + i.amount, 0).toLocaleString('es-UY', { minimumFractionDigits: 2 })} {aiResult?.currency ?? 'UYU'}
+                </span>
+              </div>
+
+              {/* Validation warning */}
+              {multiItems.some(i => i.keep && !i.categoryId) && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <AlertCircle size={14} className="text-amber-400 flex-shrink-0" />
+                  <p className="text-xs text-amber-300">Algunos gastos no tienen categoría asignada</p>
+                </div>
+              )}
+
+              {/* Save button */}
+              <button
+                type="button"
+                onClick={handleSaveMulti}
+                disabled={savingMulti || multiItems.filter(i => i.keep).length === 0 || multiItems.some(i => i.keep && !i.categoryId)}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors"
+              >
+                {savingMulti ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                {savingMulti
+                  ? 'Registrando…'
+                  : `Registrar ${multiItems.filter(i => i.keep).length} gasto${multiItems.filter(i => i.keep).length !== 1 ? 's' : ''}`}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMode('manual')}
+                className="w-full text-center text-xs text-surface-400 hover:text-surface-200 py-1 transition-colors"
+              >
+                Ingresar manualmente en su lugar →
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit(onSubmit)} className={`${mode === 'capture' || mode === 'multi-review' ? 'hidden' : ''} pb-5`}>
 
             {/* ── Type toggle ─────────────────────────────── */}
             <div className="px-5 pt-5">
@@ -520,6 +731,35 @@ export default function TransactionModal({ transaction, onClose }: Props) {
                     </select>
                   </div>
                 </div>
+
+                {/* Budget impact preview */}
+                {(() => {
+                  const amount = watch('amount');
+                  const catId  = watch('categoryId');
+                  const type   = watch('type');
+                  if (type !== 'expense' || !catId || !amount || amount <= 0) return null;
+                  const budget = currentBudgets.find(b => b.categoryId === catId);
+                  if (!budget) return null;
+                  const spentNow = budget.spent ?? 0;                // centavos
+                  const spentAfter = spentNow + amountToCentavos(amount);
+                  const pctNow   = Math.round((spentNow   / budget.amount) * 100);
+                  const pctAfter = Math.min(Math.round((spentAfter / budget.amount) * 100), 100);
+                  const barColor = pctAfter >= 100 ? '#f43f5e' : pctAfter >= 75 ? '#f59e0b' : '#0d9488';
+                  return (
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-surface-900 border border-surface-700/60">
+                      <PieChart size={13} className="text-surface-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className="text-surface-400 truncate">Presupuesto {budget.category?.nameEs ?? ''}</span>
+                          <span className="font-mono" style={{ color: barColor }}>{pctNow}% → {pctAfter}%</span>
+                        </div>
+                        <div className="h-1 rounded-full bg-surface-700 overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pctAfter}%`, background: barColor }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Fecha */}
                 <div>

@@ -1,181 +1,142 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useBudgets, useCategories, useCreateBudget, useDeleteBudget } from '../hooks/useBudgets';
-import { formatCurrency, getBudgetColor, amountToCentavos } from '../lib/formatters';
-import type { Currency } from '../types';
+import { Pencil, X, Plus, PieChart } from 'lucide-react';
+import { useBudgets, useCategories, useCreateBudget, useDeleteBudget, useCreateCategory } from '../hooks/useBudgets';
+import { formatCurrency, getBudgetColor, amountToCentavos, centavosToAmount } from '../lib/formatters';
+import type { Budget, Currency } from '../types';
 
-/* ─── Zod schema ──────────────────────────────────────────── */
-const schema = z.object({
-  categoryId: z.string().min(1, 'Seleccioná una categoría'),
-  amount: z.number({ invalid_type_error: 'Ingresá un monto' }).positive('Debe ser positivo'),
-  currency: z.enum(['UYU', 'USD']),
-  rollover: z.boolean(),
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/** Parse formatted amount "1.234,50" or "1,234.50" â†’ number */
+function parseFormattedAmount(raw: string): number {
+  const clean = raw.replace(/[^0-9.,]/g, '');
+  if (!clean) return NaN;
+  const lastComma = clean.lastIndexOf(',');
+  const lastDot   = clean.lastIndexOf('.');
+  let normalized: string;
+  if (lastComma > lastDot) {
+    normalized = clean.replace(/\./g, '').replace(',', '.');
+  } else if (lastDot > lastComma) {
+    const afterDot = clean.slice(lastDot + 1);
+    normalized = afterDot.length === 3 ? clean.replace(/\./g, '') : clean.replace(/,/g, '');
+  } else {
+    normalized = clean;
+  }
+  return parseFloat(normalized);
+}
+
+// â”€â”€â”€ Zod schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const budgetSchema = z.object({
+  categoryId: z.string().min(1, 'SeleccionÃ¡ una categorÃ­a'),
+  amountRaw:  z.string().min(1, 'IngresÃ¡ un monto'),
+  currency:   z.enum(['UYU', 'USD']),
+  rollover:   z.boolean(),
+}).refine(d => !isNaN(parseFormattedAmount(d.amountRaw)) && parseFormattedAmount(d.amountRaw) > 0,
+  { message: 'Monto invÃ¡lido', path: ['amountRaw'] });
+type BudgetFormData = z.infer<typeof budgetSchema>;
+
+const categorySchema = z.object({
+  name:   z.string().min(1).max(50),
+  nameEs: z.string().min(1, 'Nombre requerido').max(50),
+  icon:   z.string().min(1, 'IngresÃ¡ un emoji').max(4),
+  color:  z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Color hex invÃ¡lido'),
 });
-type FormData = z.infer<typeof schema>;
+type CategoryFormData = z.infer<typeof categorySchema>;
 
-/* ─── Budget card ─────────────────────────────────────────── */
-function BudgetCard({
-  budget,
-  onDelete,
-}: {
-  budget: ReturnType<typeof useBudgets>['data'] extends (infer U)[] | undefined ? U : never;
+// â”€â”€â”€ Budget Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function BudgetCard({ budget, onDelete, onEdit }: {
+  budget: Budget;
   onDelete: (id: string) => void;
+  onEdit: (b: Budget) => void;
 }) {
-  if (!budget) return null;
-  const pct = budget.percentage ?? 0;
-  const bar = Math.min(pct, 100);
+  const pct   = budget.percentage ?? 0;
+  const bar   = Math.min(pct, 100);
   const color = getBudgetColor(pct);
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      className="card p-5"
-    >
+    <motion.div layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="card p-5">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">{budget.category?.icon ?? '💰'}</span>
+          <span className="text-2xl">{budget.category?.icon ?? 'ðŸ’°'}</span>
           <div>
-            <p className="font-semibold text-white text-sm">{budget.category?.nameEs ?? budget.category?.name ?? 'Sin categoría'}</p>
+            <p className="font-semibold text-white text-sm">{budget.category?.nameEs ?? 'Sin categorÃ­a'}</p>
             <p className="text-xs text-surface-400">
-              {formatCurrency(budget.spent ?? 0, budget.currency as Currency)} de{' '}
-              {formatCurrency(budget.amount, budget.currency as Currency)}
+              {formatCurrency(budget.spent ?? 0, budget.currency as Currency)} de {formatCurrency(budget.amount, budget.currency as Currency)}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold" style={{ color }}>
-            {pct.toFixed(0)}%
-          </span>
-          <button
-            onClick={() => onDelete(budget.id)}
-            className="text-surface-500 hover:text-rose-400 transition-colors text-lg leading-none"
-            title="Eliminar"
-          >
-            ×
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-bold mr-1" style={{ color }}>{pct.toFixed(0)}%</span>
+          <button onClick={() => onEdit(budget)} className="p-1.5 rounded-lg text-surface-500 hover:text-primary-400 hover:bg-primary-500/10 transition-colors" title="Editar">
+            <Pencil size={13} />
+          </button>
+          <button onClick={() => onDelete(budget.id)} className="p-1.5 rounded-lg text-surface-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors" title="Eliminar">
+            <X size={15} />
           </button>
         </div>
       </div>
-      {/* Progress bar */}
       <div className="h-2 rounded-full bg-surface-700 overflow-hidden">
-        <motion.div
-          className="h-full rounded-full"
-          style={{ background: color }}
-          initial={{ width: 0 }}
-          animate={{ width: `${bar}%` }}
-          transition={{ duration: 0.7, ease: 'easeOut' }}
-        />
+        <motion.div className="h-full rounded-full" style={{ background: color }}
+          initial={{ width: 0 }} animate={{ width: `${bar}%` }} transition={{ duration: 0.7, ease: 'easeOut' }} />
       </div>
-      {pct >= 90 && (
-        <p className="text-xs text-rose-400 mt-1">⚠️ Presupuesto casi agotado</p>
-      )}
-      {budget.rollover && (
-        <p className="text-xs text-surface-500 mt-1">↩️ Saldo restante se acumula</p>
-      )}
+      {pct >= 100 && <p className="text-xs text-rose-400 mt-1.5">âš ï¸ Presupuesto excedido</p>}
+      {pct >= 75 && pct < 100 && <p className="text-xs text-amber-400 mt-1.5">âš¡ Presupuesto casi agotado</p>}
+      {budget.rollover && <p className="text-xs text-surface-500 mt-1">â†©ï¸ Saldo restante se acumula</p>}
     </motion.div>
   );
 }
 
-/* ─── Modal ───────────────────────────────────────────────── */
-function BudgetModal({
-  month,
-  year,
-  onClose,
-}: {
-  month: number;
-  year: number;
-  onClose: () => void;
-}) {
-  const { data: categories = [], isLoading: loadingCats } = useCategories();
-  const createBudget = useCreateBudget();
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: { currency: 'UYU', rollover: false },
+// â”€â”€â”€ New Category Sub-modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function NewCategoryModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const createCategory = useCreateCategory();
+  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<CategoryFormData>({
+    resolver: zodResolver(categorySchema),
+    defaultValues: { name: '', nameEs: '', icon: 'ðŸ·ï¸', color: '#0d9488' },
   });
+  const icon = watch('icon');
+  const color = watch('color');
 
-  const onSubmit = async (data: FormData) => {
-    await createBudget.mutateAsync({
-      categoryId: data.categoryId,
-      amount: amountToCentavos(data.amount),
-      currency: data.currency as Currency,
-      month,
-      year,
-      rollover: data.rollover,
-    });
+  const onSubmit = async (data: CategoryFormData) => {
+    const cat = await createCategory.mutateAsync({ name: data.name || data.nameEs, nameEs: data.nameEs, icon: data.icon, color: data.color });
+    onCreated(cat.id);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="card w-full max-w-md p-6 m-4"
-      >
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-white">Nuevo presupuesto</h2>
-          <button onClick={onClose} className="text-surface-400 hover:text-white text-2xl leading-none">×</button>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }} className="card w-full max-w-sm p-6 m-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-bold text-white">Nueva categorÃ­a</h3>
+          <button onClick={onClose} className="text-surface-400 hover:text-white"><X size={18} /></button>
         </div>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Category */}
+        {/* Preview */}
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-surface-800 border border-surface-700 mb-4">
+          <span className="text-3xl">{icon || 'ðŸ·ï¸'}</span>
           <div>
-            <label className="text-sm text-surface-300 mb-1 block">Categoría</label>
-            {loadingCats ? (
-              <div className="h-10 rounded-lg bg-surface-700 animate-pulse" />
-            ) : (
-              <select {...register('categoryId')} className="input w-full">
-                <option value="">Seleccioná...</option>
-                {categories.map((c: { id: string; name: string; nameEs?: string; icon?: string }) => (
-                  <option key={c.id} value={c.id}>
-                    {c.icon} {c.nameEs ?? c.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            {errors.categoryId && <p className="text-xs text-rose-400 mt-1">{errors.categoryId.message}</p>}
+            <p className="text-sm font-semibold text-white">{watch('nameEs') || 'Nombre'}</p>
+            <span className="inline-block w-3 h-3 rounded-full mt-0.5" style={{ background: color }} />
           </div>
-          {/* Amount + Currency */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="text-sm text-surface-300 mb-1 block">Monto</label>
-              <input
-                type="number"
-                step="0.01"
-                {...register('amount', { valueAsNumber: true })}
-                className="input w-full"
-                placeholder="0.00"
-              />
-              {errors.amount && <p className="text-xs text-rose-400 mt-1">{errors.amount.message}</p>}
+        </div>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+          <div>
+            <label className="text-xs text-surface-300 mb-1 block">Nombre en espaÃ±ol *</label>
+            <input {...register('nameEs')} placeholder="Ej: Ropa y calzado" className="input w-full text-sm" />
+            {errors.nameEs && <p className="text-xs text-rose-400 mt-1">{errors.nameEs.message}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-surface-300 mb-1 block">Emoji *</label>
+              <input {...register('icon')} placeholder="ðŸ·ï¸" className="input w-full text-center text-lg" maxLength={4} />
+              {errors.icon && <p className="text-xs text-rose-400 mt-1">{errors.icon.message}</p>}
             </div>
-            <div className="w-28">
-              <label className="text-sm text-surface-300 mb-1 block">Moneda</label>
-              <select {...register('currency')} className="input w-full">
-                <option value="UYU">$ UYU</option>
-                <option value="USD">U$S USD</option>
-              </select>
+            <div>
+              <label className="text-xs text-surface-300 mb-1 block">Color *</label>
+              <input {...register('color')} type="color" className="w-full h-10 rounded-xl border border-surface-700 bg-surface-900 cursor-pointer p-1" />
             </div>
           </div>
-          {/* Rollover */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" {...register('rollover')} className="accent-teal-500" />
-            <span className="text-sm text-surface-300">Acumular saldo restante al próximo mes</span>
-          </label>
-          <button
-            type="submit"
-            disabled={isSubmitting || createBudget.isPending}
-            className="btn-primary w-full"
-          >
-            {isSubmitting || createBudget.isPending ? 'Guardando…' : 'Crear presupuesto'}
+          <button type="submit" disabled={isSubmitting || createCategory.isPending} className="btn-primary w-full mt-1">
+            {isSubmitting || createCategory.isPending ? 'Creandoâ€¦' : 'Crear categorÃ­a'}
           </button>
         </form>
       </motion.div>
@@ -183,33 +144,145 @@ function BudgetModal({
   );
 }
 
-/* ─── Page ────────────────────────────────────────────────── */
+// â”€â”€â”€ Budget Modal (create / edit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function BudgetModal({ month, year, editing, onClose }: { month: number; year: number; editing?: Budget; onClose: () => void }) {
+  const { data: categories = [], isLoading: loadingCats } = useCategories();
+  const createBudget = useCreateBudget();
+  const [showNewCategory, setShowNewCategory] = useState(false);
+
+  const { register, handleSubmit, control, setValue, watch, formState: { errors, isSubmitting } } = useForm<BudgetFormData>({
+    resolver: zodResolver(budgetSchema),
+    defaultValues: {
+      categoryId: editing?.categoryId ?? '',
+      amountRaw:  editing ? centavosToAmount(editing.amount).toLocaleString('es-UY', { minimumFractionDigits: 2 }) : '',
+      currency:   (editing?.currency as 'UYU' | 'USD') ?? 'UYU',
+      rollover:   editing?.rollover ?? false,
+    },
+  });
+
+  const selectedCatId = watch('categoryId');
+  const rawAmount     = watch('amountRaw');
+  const parsedAmount  = parseFormattedAmount(rawAmount);
+  const selectedCat   = categories.find((c: { id: string; nameEs?: string; name: string }) => c.id === selectedCatId);
+  const currency      = watch('currency');
+
+  const onSubmit = async (data: BudgetFormData) => {
+    const amount = parseFormattedAmount(data.amountRaw);
+    await createBudget.mutateAsync({
+      categoryId: data.categoryId,
+      amount: amountToCentavos(amount),
+      currency: data.currency as Currency,
+      month, year,
+      rollover: data.rollover,
+    });
+    onClose();
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="card w-full max-w-md p-6 m-4">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-bold text-white">{editing ? 'Editar presupuesto' : 'Nuevo presupuesto'}</h2>
+            <button onClick={onClose} className="text-surface-400 hover:text-white"><X size={18} /></button>
+          </div>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            {/* Category */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm text-surface-300">CategorÃ­a</label>
+                <button type="button" onClick={() => setShowNewCategory(true)} className="flex items-center gap-1 text-xs text-primary-400 hover:text-primary-300">
+                  <Plus size={12} /> Nueva categorÃ­a
+                </button>
+              </div>
+              {loadingCats ? (
+                <div className="h-10 rounded-lg bg-surface-700 animate-pulse" />
+              ) : (
+                <select {...register('categoryId')} className="input w-full">
+                  <option value="">SeleccionÃ¡...</option>
+                  {categories.map((c: { id: string; name: string; nameEs?: string; icon?: string }) => (
+                    <option key={c.id} value={c.id}>{c.icon} {c.nameEs ?? c.name}</option>
+                  ))}
+                </select>
+              )}
+              {errors.categoryId && <p className="text-xs text-rose-400 mt-1">{errors.categoryId.message}</p>}
+            </div>
+
+            {/* Amount + Currency */}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-sm text-surface-300 mb-1 block">Monto</label>
+                <Controller name="amountRaw" control={control} render={({ field }) => (
+                  <input type="text" inputMode="decimal" placeholder="0,00"
+                    value={field.value}
+                    onChange={e => field.onChange(e.target.value.replace(/[^0-9.,]/g, ''))}
+                    className="input w-full font-mono" />
+                )} />
+                {errors.amountRaw && <p className="text-xs text-rose-400 mt-1">{errors.amountRaw.message}</p>}
+              </div>
+              <div className="w-28">
+                <label className="text-sm text-surface-300 mb-1 block">Moneda</label>
+                <select {...register('currency')} className="input w-full">
+                  <option value="UYU">$ UYU</option>
+                  <option value="USD">U$S USD</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Budget preview */}
+            {selectedCat && !isNaN(parsedAmount) && parsedAmount > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-surface-800 border border-surface-700/60">
+                <PieChart size={13} className="text-surface-400 flex-shrink-0" />
+                <p className="text-xs text-surface-400">
+                  Presupuesto para <span className="text-surface-200 font-medium">{(selectedCat as { nameEs?: string; name: string }).nameEs ?? (selectedCat as { name: string }).name}</span>:{' '}
+                  <span className="font-mono text-emerald-400">{formatCurrency(amountToCentavos(parsedAmount), currency as Currency)}</span> / mes
+                </p>
+              </div>
+            )}
+
+            {/* Rollover */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" {...register('rollover')} className="accent-teal-500" />
+              <span className="text-sm text-surface-300">Acumular saldo restante al prÃ³ximo mes</span>
+            </label>
+
+            <button type="submit" disabled={isSubmitting || createBudget.isPending} className="btn-primary w-full">
+              {isSubmitting || createBudget.isPending ? 'Guardandoâ€¦' : editing ? 'Guardar cambios' : 'Crear presupuesto'}
+            </button>
+          </form>
+        </motion.div>
+      </div>
+
+      <AnimatePresence>
+        {showNewCategory && (
+          <NewCategoryModal onClose={() => setShowNewCategory(false)} onCreated={(id) => setValue('categoryId', id)} />
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function BudgetsPage() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-  const [showModal, setShowModal] = useState(false);
+  const [year, setYear]   = useState(now.getFullYear());
+  const [showModal, setShowModal]       = useState(false);
+  const [editingBudget, setEditingBudget] = useState<Budget | undefined>();
 
   const { data: budgets = [], isLoading } = useBudgets(month, year);
   const deleteBudget = useDeleteBudget(month, year);
 
-  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('es-UY', {
-    month: 'long',
-    year: 'numeric',
-  });
-
+  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('es-UY', { month: 'long', year: 'numeric' });
   const totalBudgeted = budgets.reduce((s, b) => s + b.amount, 0);
-  const totalSpent = budgets.reduce((s, b) => s + (b.spent ?? 0), 0);
-  const overCount = budgets.filter((b) => (b.percentage ?? 0) >= 100).length;
+  const totalSpent    = budgets.reduce((s, b) => s + (b.spent ?? 0), 0);
+  const overCount     = budgets.filter(b => (b.percentage ?? 0) >= 100).length;
 
-  const handlePrev = () => {
-    if (month === 1) { setMonth(12); setYear((y) => y - 1); }
-    else setMonth((m) => m - 1);
-  };
-  const handleNext = () => {
-    if (month === 12) { setMonth(1); setYear((y) => y + 1); }
-    else setMonth((m) => m + 1);
-  };
+  const handlePrev = () => { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); };
+  const handleNext = () => { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); };
+
+  const openEdit  = (b: Budget) => { setEditingBudget(b); setShowModal(true); };
+  const closeModal = () => { setShowModal(false); setEditingBudget(undefined); };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -217,18 +290,18 @@ export default function BudgetsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Presupuestos</h1>
-          <p className="text-surface-400 text-sm">Control de gastos por categoría</p>
+          <p className="text-surface-400 text-sm">Control de gastos por categorÃ­a</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
+        <button onClick={() => { setEditingBudget(undefined); setShowModal(true); }} className="btn-primary flex items-center gap-2">
           <span className="text-lg">+</span> Nuevo presupuesto
         </button>
       </div>
 
       {/* Month navigator */}
       <div className="flex items-center justify-center gap-4">
-        <button onClick={handlePrev} className="p-2 rounded-lg bg-surface-800 hover:bg-surface-700 text-white">‹</button>
+        <button onClick={handlePrev} className="p-2 rounded-lg bg-surface-800 hover:bg-surface-700 text-white">â€¹</button>
         <span className="text-white font-semibold capitalize w-40 text-center">{monthLabel}</span>
-        <button onClick={handleNext} className="p-2 rounded-lg bg-surface-800 hover:bg-surface-700 text-white">›</button>
+        <button onClick={handleNext} className="p-2 rounded-lg bg-surface-800 hover:bg-surface-700 text-white">â€º</button>
       </div>
 
       {/* Summary */}
@@ -236,8 +309,8 @@ export default function BudgetsPage() {
         {[
           { label: 'Total presupuestado', value: formatCurrency(totalBudgeted), color: 'text-teal-400' },
           { label: 'Total gastado', value: formatCurrency(totalSpent), color: totalSpent > totalBudgeted ? 'text-rose-400' : 'text-white' },
-          { label: 'Categorías excedidas', value: `${overCount}`, color: overCount > 0 ? 'text-amber-400' : 'text-teal-400' },
-        ].map((s) => (
+          { label: 'CategorÃ­as excedidas', value: `${overCount}`, color: overCount > 0 ? 'text-amber-400' : 'text-teal-400' },
+        ].map(s => (
           <div key={s.label} className="card p-4 text-center">
             <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
             <p className="text-xs text-surface-400 mt-1">{s.label}</p>
@@ -247,22 +320,18 @@ export default function BudgetsPage() {
 
       {/* Budget list */}
       {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="card p-5 animate-pulse h-20" />
-          ))}
-        </div>
+        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="card p-5 animate-pulse h-20" />)}</div>
       ) : budgets.length === 0 ? (
         <div className="card p-10 text-center">
-          <p className="text-5xl mb-3">🏷️</p>
+          <p className="text-5xl mb-3">ðŸ·ï¸</p>
           <p className="text-surface-300 font-medium">No hay presupuestos para este mes</p>
-          <p className="text-surface-500 text-sm mt-1">Creá uno para controlar tus gastos</p>
+          <p className="text-surface-500 text-sm mt-1">CreÃ¡ uno para controlar tus gastos</p>
         </div>
       ) : (
         <AnimatePresence mode="popLayout">
           <div className="space-y-3">
-            {budgets.map((b) => (
-              <BudgetCard key={b.id} budget={b} onDelete={(id) => deleteBudget.mutate(id)} />
+            {budgets.map(b => (
+              <BudgetCard key={b.id} budget={b} onDelete={id => deleteBudget.mutate(id)} onEdit={openEdit} />
             ))}
           </div>
         </AnimatePresence>
@@ -270,10 +339,9 @@ export default function BudgetsPage() {
 
       {/* Modal */}
       <AnimatePresence>
-        {showModal && (
-          <BudgetModal month={month} year={year} onClose={() => setShowModal(false)} />
-        )}
+        {showModal && <BudgetModal month={month} year={year} editing={editingBudget} onClose={closeModal} />}
       </AnimatePresence>
     </div>
   );
 }
+

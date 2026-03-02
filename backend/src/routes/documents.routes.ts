@@ -5,15 +5,24 @@ import fs from 'fs';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 // ── Parsed receipt shape ────────────────────────────────────────────────────────
+export interface ParsedReceiptItem {
+  description: string;
+  amount: number;
+  categoryHint: string;  // food|transport|health|shopping|utilities|education|housing|entertainment|cleaning|hygiene|snacks|electronics|other
+}
+
 interface ParsedReceipt {
   merchant: string | null;
+  isMultiItem: boolean;           // true when receipt has multi-category line items (supermarket)
+  items: ParsedReceiptItem[];     // populated when isMultiItem=true, grouped by category
+  // Single-transaction fields (isMultiItem=false):
   description: string | null;
   amount: number | null;
   currency: 'UYU' | 'USD' | 'EUR' | null;
-  date: string | null;         // YYYY-MM-DD
-  categoryHint: string | null; // food|transport|entertainment|health|shopping|utilities|education|housing|other
+  date: string | null;            // YYYY-MM-DD
+  categoryHint: string | null;
   paymentMethod: string | null;
-  confidence: number;          // 0-1
+  confidence: number;             // 0-1
 }
 
 export const documentRouter = Router();
@@ -118,21 +127,32 @@ function findTotalAmount(text: string): number | null {
 // ── AI analysis helpers ────────────────────────────────────────────────────────
 function fallbackParse(ocrText: string): ParsedReceipt {
   const amounts = extractAmounts(ocrText);
-  // Prefer a TOTAL line; fallback to largest detected amount
   const totalAmount = findTotalAmount(ocrText)
     ?? (amounts.length > 0 ? Math.max(...amounts.map(a => a.value)) : null);
   const isuyu = /\$[Uu]|UYU|\bpesos?\b/i.test(ocrText);
   const isusd = /USD|\bd[oó]lares?\b/i.test(ocrText);
   return {
     merchant: null,
+    isMultiItem: false,
+    items: [],
     description: ocrText.replace(/\s+/g, ' ').trim().slice(0, 60) || null,
     amount: totalAmount,
-    currency: isuyu ? 'UYU' : isusd ? 'USD' : 'UYU', // assume UYU by default
+    currency: isuyu ? 'UYU' : isusd ? 'USD' : 'UYU',
     date: null,
     categoryHint: null,
     paymentMethod: null,
     confidence: 0.2,
   };
+}
+
+/** Detect if the receipt is from a supermarket / multi-category store */
+function looksLikeMultiItemReceipt(ocrText: string, merchant: string | null): boolean {
+  const merchantLower = (merchant ?? '').toLowerCase();
+  const supermarketNames = ['disco', 'devoto', 'tienda inglesa', 'géant', 'tata', 'multiahorro', 'super', 'supermercado', 'walmart', 'mercado', 'fresh market', 'carrefour', 'lidl', 'jumbo'];
+  if (supermarketNames.some(s => merchantLower.includes(s))) return true;
+  // Heuristic: many lines with amounts
+  const lineCount = ocrText.split('\n').filter(l => /\d/.test(l)).length;
+  return lineCount > 8;
 }
 
 async function analyzeWithAI(ocrText: string, imagePath: string | null): Promise<ParsedReceipt> {
@@ -154,44 +174,69 @@ async function analyzeWithAI(ocrText: string, imagePath: string | null): Promise
       content.push({ type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } });
     }
 
-    const ocrSnippet = ocrText ? `\n\nTexto OCR detectado:\n${ocrText.slice(0, 1200)}` : '';
+    const ocrSnippet = ocrText ? `\n\nTexto OCR detectado:\n${ocrText.slice(0, 2000)}` : '';
     content.push({
       type: 'text',
-      text: `Eres un asistente de finanzas personales uruguayo. Analiza este comprobante/ticket de Uruguay y extrae los datos del GASTO TOTAL pagado.${ocrSnippet}
+      text: `Eres un asistente de finanzas personales uruguayo experto en análisis de tickets y comprobantes.${ocrSnippet}
 
-IMPORTANTE sobre números uruguayos:
-- El PUNTO es separador de MILES: $1.470 = MIL CUATROCIENTOS SETENTA pesos (NO 1.47)
-- La COMA es separador decimal: $1.470,50 = mil cuatrocientos setenta con cincuenta centésimos
-- Busca la línea que diga TOTAL, IMPORTE, A PAGAR o MONTO — ese es el importe a devolver
-- Si no hay una línea total explícita, devolver el monto más grande del ticket
+REGLAS NUMÉRICAS URUGUAYAS (CRÍTICO):
+- PUNTO = separador de MILES: $1.470 = mil cuatrocientos setenta
+- COMA = separador DECIMAL: $1.470,50 = mil cuatrocientos setenta con cincuenta centésimos
+- Nunca devolver strings como amount, solo números
 - Moneda por defecto: UYU
 
-Responde ÚNICAMENTE con un JSON válido (sin texto extra, sin markdown, sin bloques de código):
-{
-  "merchant": "Nombre del comercio, null si no se detecta",
-  "description": "Descripción del gasto en español, máx 60 caracteres, null si no se detecta",
-  "amount": 0,
-  "currency": "UYU o USD o EUR",
-  "date": "YYYY-MM-DD o null",
-  "categoryHint": "food o transport o entertainment o health o shopping o utilities o education o housing o other o null",
-  "paymentMethod": "cash o debit o credit o transfer o other o null",
-  "confidence": 0.95
-}
+INSTRUCCIONES:
+1. Identificá el comercio (merchant).
+2. Determiná si es un ticket de SUPERMERCADO o tienda multi-categoría (más de 4 artículos de categorías distintas).
+3. Si es supermercado/multi-categoría → isMultiItem: true y armá el array "items" AGRUPANDO artículos por categoría.
+   - Cada item en el array = una categoría del ticket, con su subtotal sumado
+   - categoryHint válidos para items de supermercado: food, cleaning, hygiene, snacks, electronics, shopping, health, other
+   - Ejemplo: todos los alimentos juntos, todos los artículos de limpieza juntos, etc.
+   - El campo "description" de cada item: nombre descriptivo en español, ej: "Alimentos y bebidas", "Limpieza del hogar"
+   - Los amounts deben sumar aproximadamente al TOTAL del ticket
+4. Si NO es multi-categoría → isMultiItem: false, items: [], y completá los campos simples.
+5. Extraer: fecha, moneda, método de pago, confianza.
 
-Recordá: amount debe ser un número entero o decimal, NUNCA un string. UYU es la moneda por defecto.`,
+Respondé ÚNICAMENTE con JSON válido (sin markdown):
+{
+  "merchant": "string o null",
+  "isMultiItem": true/false,
+  "items": [
+    { "description": "Alimentos y bebidas", "amount": 1250.50, "categoryHint": "food" },
+    { "description": "Limpieza del hogar", "amount": 320.00, "categoryHint": "cleaning" }
+  ],
+  "description": "null si isMultiItem, o descripción corta",
+  "amount": null si isMultiItem sino el TOTAL,
+  "currency": "UYU",
+  "date": "YYYY-MM-DD o null",
+  "categoryHint": "null si isMultiItem, sino food/transport/health/shopping/utilities/education/housing/entertainment/other",
+  "paymentMethod": "cash/debit/credit/transfer/other/null",
+  "confidence": 0.95
+}`,
     });
 
     const resp = await client.messages.create({
       model: 'claude-3-haiku-20240307',
-      max_tokens: 400,
+      max_tokens: 800,
       messages: [{ role: 'user', content }],
     });
 
     const raw: string = resp.content?.[0]?.type === 'text' ? resp.content[0].text : '{}';
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as ParsedReceipt;
-      return { ...fallbackParse(ocrText), ...parsed };
+      const parsed = JSON.parse(jsonMatch[0]) as Partial<ParsedReceipt>;
+      const base = fallbackParse(ocrText);
+
+      // If AI didn't set isMultiItem but merchant looks like supermarket, override
+      const resolvedMulti = parsed.isMultiItem
+        ?? looksLikeMultiItemReceipt(ocrText, parsed.merchant ?? null);
+
+      return {
+        ...base,
+        ...parsed,
+        isMultiItem: resolvedMulti,
+        items: Array.isArray(parsed.items) ? parsed.items : [],
+      };
     }
   } catch (e) {
     console.error('[AI analyze] Error:', e);
