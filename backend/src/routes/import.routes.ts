@@ -302,8 +302,8 @@ function detectYearMonth(text: string): { year: number; defaultMonth: number } {
     january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
     july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
   };
-  // Match "Diciembre/2024" or "Diciembre 2024"
-  const m = text.slice(0, 1000).match(/([A-Za-záéíóúÁÉÍÓÚü]+)[\/\s]+(\d{4})/i);
+  // Match "Febrero/2026" or "Diciembre 2024" — search wider window and require real month name
+  const m = text.slice(0, 3000).match(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december)[\/\s]+(\d{4})\b/i);
   if (m) {
     const monthNum = MONTHS[m[1].toLowerCase()];
     const year = parseInt(m[2]);
