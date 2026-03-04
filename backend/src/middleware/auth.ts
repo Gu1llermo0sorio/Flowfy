@@ -44,6 +44,10 @@ export async function authenticate(
       throw createError('Usuario no encontrado', 401, 'USER_NOT_FOUND');
     }
 
+    if (user.role === 'banned') {
+      throw createError('Esta cuenta ha sido suspendida. Contactá al administrador.', 403, 'ACCOUNT_BANNED');
+    }
+
     req.userId = user.id;
     req.familyId = user.familyId;
     req.userRole = user.role;

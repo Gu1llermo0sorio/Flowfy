@@ -122,6 +122,10 @@ authRouter.post('/login', validate(loginSchema), async (req, res, next) => {
       throw createError('Email o contraseña incorrectos', 401, 'INVALID_CREDENTIALS');
     }
 
+    if (user.role === 'banned') {
+      throw createError('Esta cuenta ha sido suspendida. Contactá al administrador.', 403, 'ACCOUNT_BANNED');
+    }
+
     // Update last active
     await prisma.user.update({
       where: { id: user.id },
@@ -247,6 +251,63 @@ authRouter.get('/me', authenticate, async (req: AuthRequest, res, next) => {
         })),
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/auth/change-password ───────────────────────────────────────────
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'La contraseña actual es requerida'),
+  newPassword: z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres').max(128),
+});
+
+authRouter.post('/change-password', authenticate, validate(changePasswordSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body as z.infer<typeof changePasswordSchema>;
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId! } });
+    if (!user) throw createError('Usuario no encontrado', 404, 'USER_NOT_FOUND');
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) throw createError('La contraseña actual es incorrecta', 400, 'WRONG_PASSWORD');
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({ where: { id: req.userId! }, data: { passwordHash } });
+
+    // Revoke all other sessions so attacker can't stay logged in
+    await revokeAllRefreshTokens(req.userId!);
+
+    res.json({ success: true, message: 'Contraseña actualizada. Vas a ser deslogueado automáticamente de otras sesiones.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── PATCH /api/auth/profile — update name and/or email ────────────────────────
+const updateAuthProfileSchema = z.object({
+  name: z.string().min(2).max(50).optional(),
+  email: z.string().email('Email inválido').optional(),
+});
+
+authRouter.patch('/profile', authenticate, validate(updateAuthProfileSchema), async (req: AuthRequest, res, next) => {
+  try {
+    const { name, email } = req.body as z.infer<typeof updateAuthProfileSchema>;
+
+    if (email) {
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing && existing.id !== req.userId) {
+        throw createError('Ya existe una cuenta con ese email', 409, 'EMAIL_TAKEN');
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: req.userId! },
+      data: { ...(name && { name }), ...(email && { email }) },
+      select: { id: true, name: true, email: true, avatar: true, role: true },
+    });
+
+    res.json({ success: true, data: updated });
   } catch (err) {
     next(err);
   }

@@ -14,6 +14,13 @@ import {
   AlertTriangle,
   TrendingUp,
   TrendingDown,
+  UserX,
+  UserCheck,
+  KeyRound,
+  LogOut as SessionIcon,
+  Building2,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 import { apiClient } from '../lib/apiClient';
 import { useAuthStore } from '../stores/authStore';
@@ -55,6 +62,19 @@ interface ActivityItem {
   category: { nameEs: string; icon: string } | null;
 }
 
+interface AdminFamily {
+  id: string;
+  name: string;
+  createdAt: string;
+  _count: { users: number; transactions: number };
+  users: { id: string; name: string; email: string; role: string }[];
+}
+
+interface AdminLog {
+  registrations: { id: string; name: string; email: string; createdAt: string; family: { name: string } }[];
+  imports: { batchId: string; date: string; count: number; user: { name: string } }[];
+}
+
 // ── Hooks ────────────────────────────────────────────────────
 function useAdminStats() {
   return useQuery<AdminStats>({
@@ -84,6 +104,26 @@ function useAdminActivity() {
       return data.data;
     },
     refetchInterval: 30_000,
+  });
+}
+
+function useAdminFamilies() {
+  return useQuery<AdminFamily[]>({
+    queryKey: ['admin-families'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ data: AdminFamily[] }>('/admin/families');
+      return data.data;
+    },
+  });
+}
+
+function useAdminLogs() {
+  return useQuery<AdminLog>({
+    queryKey: ['admin-logs'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ data: AdminLog }>('/admin/logs');
+      return data.data;
+    },
   });
 }
 
@@ -123,12 +163,16 @@ export default function AdminPage() {
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [activeTab, setActiveTab] = useState<'users' | 'activity'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'activity' | 'families' | 'logs'>('users');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [resetPwUserId, setResetPwUserId] = useState<string | null>(null);
+  const [resetPwInput, setResetPwInput] = useState('');
 
   const { data: stats, isLoading: statsLoading } = useAdminStats();
   const { data: usersData, isLoading: usersLoading } = useAdminUsers(search, page);
   const { data: activity } = useAdminActivity();
+  const { data: families, isLoading: familiesLoading } = useAdminFamilies();
+  const { data: logs, isLoading: logsLoading } = useAdminLogs();
 
   // Check admin access
   if (currentUser?.role !== 'ADMIN') {
@@ -142,6 +186,28 @@ export default function AdminPage() {
       </div>
     );
   }
+
+  const banUser = useMutation({
+    mutationFn: (id: string) => apiClient.patch(`/admin/users/${id}/ban`, {}),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); addToast({ type: 'success', message: 'Estado del usuario actualizado' }); },
+    onError: () => addToast({ type: 'error', message: 'Error al banear/desbanear usuario' }),
+  });
+
+  const revokeSessions = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/admin/users/${id}/sessions`),
+    onSuccess: () => addToast({ type: 'success', message: 'Sesiones revocadas' }),
+    onError: () => addToast({ type: 'error', message: 'Error al revocar sesiones' }),
+  });
+
+  const resetPassword = useMutation({
+    mutationFn: ({ id, newPassword }: { id: string; newPassword: string }) =>
+      apiClient.patch(`/admin/users/${id}/reset-password`, { newPassword }),
+    onSuccess: () => {
+      addToast({ type: 'success', message: 'Contraseña reseteada y sesiones revocadas' });
+      setResetPwUserId(null); setResetPwInput('');
+    },
+    onError: () => addToast({ type: 'error', message: 'Error al resetear contraseña' }),
+  });
 
   const patchUser = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
@@ -194,16 +260,21 @@ export default function AdminPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-surface-800 rounded-xl w-fit">
-        {(['users', 'activity'] as const).map((tab) => (
+      <div className="flex gap-1 p-1 bg-surface-800 rounded-xl w-fit flex-wrap">
+        {([
+          { key: 'users', label: `Usuarios (${usersData?.total ?? '…'})` },
+          { key: 'activity', label: 'Actividad' },
+          { key: 'families', label: 'Familias' },
+          { key: 'logs', label: 'Logs' },
+        ] as const).map(({ key, label }) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            key={key}
+            onClick={() => setActiveTab(key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === tab ? 'bg-surface-700 text-surface-50' : 'text-surface-400 hover:text-surface-50'
+              activeTab === key ? 'bg-surface-700 text-surface-50' : 'text-surface-400 hover:text-surface-50'
             }`}
           >
-            {tab === 'users' ? `Usuarios (${usersData?.total ?? '…'})` : 'Actividad reciente'}
+            {label}
           </button>
         ))}
       </div>
@@ -242,7 +313,7 @@ export default function AdminPage() {
                       <tr key={i}><td colSpan={6} className="px-5 py-3"><div className="skeleton h-5 w-full rounded" /></td></tr>
                     ))
                   : usersData?.users.map((user) => (
-                      <tr key={user.id} className="border-b border-surface-700 hover:bg-surface-800/50 transition-colors">
+                      <tr key={user.id} className={`border-b border-surface-700 transition-colors ${user.role === 'banned' ? 'bg-rose-500/5' : 'hover:bg-surface-800/50'}`}>
                         <td className="px-5 py-3">
                           <div>
                             <p className="font-medium text-surface-50 flex items-center gap-1.5">
@@ -255,55 +326,59 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-surface-300 hidden md:table-cell">{user.family?.name}</td>
                         <td className="px-4 py-3 hidden lg:table-cell">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            user.role === 'ADMIN'
-                              ? 'bg-amber-500/15 text-amber-400'
-                              : user.role === 'owner'
-                              ? 'bg-primary-500/15 text-primary-400'
-                              : 'bg-surface-700 text-surface-400'
+                            user.role === 'ADMIN' ? 'bg-amber-500/15 text-amber-400'
+                            : user.role === 'banned' ? 'bg-rose-500/15 text-rose-400'
+                            : user.role === 'owner' ? 'bg-primary-500/15 text-primary-400'
+                            : 'bg-surface-700 text-surface-400'
                           }`}>
-                            {user.role}
+                            {user.role === 'banned' ? '🚫 Baneado' : user.role}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-surface-300 font-mono hidden lg:table-cell">{user.xp} / {user.level}</td>
                         <td className="px-4 py-3 text-surface-400 hidden xl:table-cell">{user._count.transactions}</td>
                         <td className="px-5 py-3">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1">
                             {user.id !== currentUser?.id && (
                               <>
-                                {user.role !== 'ADMIN' ? (
-                                  <button
-                                    onClick={() => patchUser.mutate({ id: user.id, data: { role: 'ADMIN' } })}
+                                {user.role !== 'ADMIN' && user.role !== 'banned' ? (
+                                  <button onClick={() => patchUser.mutate({ id: user.id, data: { role: 'ADMIN' } })}
                                     title="Promover a Admin"
-                                    className="p-1.5 rounded-lg text-surface-400 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
-                                  >
+                                    className="p-1.5 rounded-lg text-surface-400 hover:text-amber-400 hover:bg-amber-500/10 transition-colors">
                                     <Crown className="w-3.5 h-3.5" />
                                   </button>
-                                ) : (
-                                  <button
-                                    onClick={() => patchUser.mutate({ id: user.id, data: { role: 'owner' } })}
+                                ) : user.role === 'ADMIN' ? (
+                                  <button onClick={() => patchUser.mutate({ id: user.id, data: { role: 'owner' } })}
                                     title="Quitar Admin"
-                                    className="p-1.5 rounded-lg text-amber-400 hover:text-surface-400 hover:bg-surface-700 transition-colors"
-                                  >
+                                    className="p-1.5 rounded-lg text-amber-400 hover:text-surface-400 hover:bg-surface-700 transition-colors">
                                     <Crown className="w-3.5 h-3.5" />
                                   </button>
-                                )}
+                                ) : null}
+                                <button onClick={() => banUser.mutate(user.id)}
+                                  title={user.role === 'banned' ? 'Desbanear usuario' : 'Banear usuario'}
+                                  className={`p-1.5 rounded-lg transition-colors ${user.role === 'banned' ? 'text-rose-400 hover:bg-rose-500/10' : 'text-surface-400 hover:text-rose-400 hover:bg-rose-500/10'}`}>
+                                  {user.role === 'banned' ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
+                                </button>
+                                <button onClick={() => revokeSessions.mutate(user.id)}
+                                  title="Revocar todas las sesiones"
+                                  className="p-1.5 rounded-lg text-surface-400 hover:text-amber-400 hover:bg-amber-500/10 transition-colors">
+                                  <SessionIcon className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => { setResetPwUserId(user.id); setResetPwInput(''); }}
+                                  title="Resetear contraseña"
+                                  className="p-1.5 rounded-lg text-surface-400 hover:text-primary-400 hover:bg-primary-500/10 transition-colors">
+                                  <KeyRound className="w-3.5 h-3.5" />
+                                </button>
                                 {confirmDelete === user.id ? (
                                   <div className="flex items-center gap-1">
                                     <span className="text-xs text-rose-400">¿Seguro?</span>
-                                    <button
-                                      onClick={() => deleteUser.mutate(user.id)}
-                                      className="text-xs px-2 py-1 bg-rose-500 text-white rounded-lg hover:bg-rose-600"
-                                    >Sí</button>
-                                    <button
-                                      onClick={() => setConfirmDelete(null)}
-                                      className="text-xs px-2 py-1 bg-surface-700 text-surface-300 rounded-lg hover:bg-surface-600"
-                                    >No</button>
+                                    <button onClick={() => deleteUser.mutate(user.id)}
+                                      className="text-xs px-2 py-1 bg-rose-500 text-white rounded-lg hover:bg-rose-600">Sí</button>
+                                    <button onClick={() => setConfirmDelete(null)}
+                                      className="text-xs px-2 py-1 bg-surface-700 text-surface-300 rounded-lg hover:bg-surface-600">No</button>
                                   </div>
                                 ) : (
-                                  <button
-                                    onClick={() => setConfirmDelete(user.id)}
-                                    className="p-1.5 rounded-lg text-surface-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                                  >
+                                  <button onClick={() => setConfirmDelete(user.id)}
+                                    className="p-1.5 rounded-lg text-surface-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors">
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 )}
@@ -374,6 +449,136 @@ export default function AdminPage() {
             </div>
           )}
         </motion.div>
+      )}
+
+      {/* Families tab */}
+      {activeTab === 'families' && (
+        <motion.div key="families" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+          {familiesLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Array(4).fill(0).map((_, i) => <div key={i} className="skeleton h-32 rounded-2xl" />)}
+            </div>
+          ) : !families?.length ? (
+            <p className="text-surface-400 text-sm text-center py-8">No hay familias registradas.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {families.map((family) => (
+                <div key={family.id} className="card p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-primary-500/15 flex items-center justify-center flex-shrink-0">
+                      <Building2 className="w-4 h-4 text-primary-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-surface-50">{family.name}</p>
+                      <p className="text-xs text-surface-400">{new Date(family.createdAt).toLocaleDateString('es-UY')}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-surface-400">{family._count.transactions} movs.</p>
+                      <p className="text-xs text-surface-500">{family._count.users} miembros</p>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-surface-700">
+                    {family.users.map((u) => (
+                      <div key={u.id} className="flex items-center justify-between py-1.5">
+                        <div>
+                          <p className="text-xs font-medium text-surface-200">{u.name}</p>
+                          <p className="text-xs text-surface-500">{u.email}</p>
+                        </div>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                          u.role === 'ADMIN' ? 'bg-amber-500/15 text-amber-400'
+                          : u.role === 'banned' ? 'bg-rose-500/15 text-rose-400'
+                          : u.role === 'owner' ? 'bg-primary-500/15 text-primary-400'
+                          : 'bg-surface-700 text-surface-400'
+                        }`}>{u.role}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Logs tab */}
+      {activeTab === 'logs' && (
+        <motion.div key="logs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+          {logsLoading ? (
+            <div className="space-y-2">{Array(6).fill(0).map((_, i) => <div key={i} className="skeleton h-12 rounded-xl" />)}</div>
+          ) : (
+            <>
+              <div className="card p-0">
+                <div className="px-5 py-3 border-b border-surface-700">
+                  <p className="text-sm font-semibold text-surface-50">Registros recientes</p>
+                </div>
+                <div className="divide-y divide-surface-700">
+                  {!logs?.registrations.length ? (
+                    <p className="text-xs text-surface-500 px-5 py-4">Sin registros.</p>
+                  ) : logs.registrations.map((u) => (
+                    <div key={u.id} className="flex items-center gap-3 px-5 py-3">
+                      <div className="w-7 h-7 rounded-lg bg-primary-500/15 flex items-center justify-center flex-shrink-0">
+                        <Users className="w-3.5 h-3.5 text-primary-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-surface-50">{u.name}</p>
+                        <p className="text-xs text-surface-400">{u.email} · {u.family?.name}</p>
+                      </div>
+                      <p className="text-xs text-surface-500 flex-shrink-0">{new Date(u.createdAt).toLocaleDateString('es-UY')}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="card p-0">
+                <div className="px-5 py-3 border-b border-surface-700">
+                  <p className="text-sm font-semibold text-surface-50">Importaciones recientes</p>
+                </div>
+                <div className="divide-y divide-surface-700">
+                  {!logs?.imports.length ? (
+                    <p className="text-xs text-surface-500 px-5 py-4">Sin importaciones.</p>
+                  ) : logs.imports.map((imp) => (
+                    <div key={imp.batchId} className="flex items-center gap-3 px-5 py-3">
+                      <div className="w-7 h-7 rounded-lg bg-violet-500/15 flex items-center justify-center flex-shrink-0">
+                        <FileText className="w-3.5 h-3.5 text-violet-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-surface-50">{imp.user.name}<span className="text-surface-400 font-normal"> · {imp.count} movimientos</span></p>
+                        <p className="text-xs text-surface-400 font-mono truncate">{imp.batchId}</p>
+                      </div>
+                      <p className="text-xs text-surface-500 flex-shrink-0">{new Date(imp.date).toLocaleDateString('es-UY')}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </motion.div>
+      )}
+
+      {/* Reset password modal */}
+      {resetPwUserId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="card p-6 max-w-sm w-full space-y-4">
+            <h3 className="text-base font-bold text-surface-50 flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-primary-400" />
+              Resetear contraseña
+            </h3>
+            <p className="text-xs text-surface-400">Ingresá la nueva contraseña para el usuario. Sus sesiones activas se revocarán automáticamente.</p>
+            <input type="password" value={resetPwInput} onChange={(e) => setResetPwInput(e.target.value)}
+              className="input w-full" placeholder="Nueva contraseña (min. 8 caracteres)" />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setResetPwUserId(null); setResetPwInput(''); }}
+                className="px-4 py-2 text-sm rounded-xl bg-surface-700 text-surface-300 hover:bg-surface-600 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={() => resetPassword.mutate({ id: resetPwUserId, newPassword: resetPwInput })}
+                disabled={resetPwInput.length < 8 || resetPassword.isPending}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-primary-600 hover:bg-primary-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                {resetPassword.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                Resetear
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Disclaimer */}
