@@ -284,25 +284,8 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
           {step === 0 && (
             <div className="space-y-4">
               <p className="text-sm text-surface-300">
-                Subí un archivo CSV de tu banco o el PDF de tu extracto de tarjeta. La IA procesará el PDF automáticamente.
+                Subí el PDF de tu extracto de tarjeta o un CSV de tu banco. El formato se detecta automáticamente.
               </p>
-              {/* Mode selector */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setMode('csv')}
-                  className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${mode === 'csv' ? 'border-primary-500/60 bg-primary-500/10 text-primary-400' : 'border-surface-700 text-surface-400 hover:border-surface-500'}`}
-                >
-                  <FileText className="w-4 h-4" />
-                  CSV / Excel
-                </button>
-                <button
-                  onClick={() => setMode('pdf')}
-                  className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${mode === 'pdf' ? 'border-primary-500/60 bg-primary-500/10 text-primary-400' : 'border-surface-700 text-surface-400 hover:border-surface-500'}`}
-                >
-                  <CreditCard className="w-4 h-4" />
-                  PDF de tarjeta
-                </button>
-              </div>
               <div
                 className={`border-2 border-dashed rounded-2xl p-10 text-center transition-colors cursor-pointer ${
                   dragOver ? 'border-primary-400 bg-primary-500/10' : 'border-surface-600 hover:border-surface-500'
@@ -317,23 +300,17 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 ) : (
                   <>
                     <Upload className="w-8 h-8 mx-auto text-surface-400 mb-2" />
-                    <p className="text-sm text-surface-300 font-medium">
-                      {mode === 'pdf' ? 'Arrastrá tu PDF del extracto aquí' : 'Arrastrá tu CSV aquí'}
-                    </p>
+                    <p className="text-sm text-surface-300 font-medium">Arrastrá tu archivo aquí</p>
                     <p className="text-xs text-surface-500 mt-1">o hacé clic para seleccionar</p>
-                    <p className="text-xs text-surface-600 mt-2">
-                      {mode === 'pdf' ? 'Archivos .pdf — OCA, BROU, Itaú, etc. • máx 20 MB' : 'Solo archivos .csv, máx 5 MB'}
-                    </p>
+                    <p className="text-xs text-surface-600 mt-2">PDF de tarjeta (OCA, BROU, Itaú…) o CSV de banco • máx 20 MB</p>
                   </>
                 )}
               </div>
               <input ref={fileRef} type="file" accept=".csv,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
-              {mode === 'pdf' && (
-                <p className="text-xs text-surface-500 flex items-center gap-1.5">
-                  <span className="text-primary-400">✨</span>
-                  La IA leerá el PDF y extraerá todas las transacciones automáticamente
-                </p>
-              )}
+              <p className="text-xs text-surface-500 flex items-center gap-1.5">
+                <span className="text-primary-400">✨</span>
+                El PDF se lee y extrae todas las transacciones automáticamente
+              </p>
             </div>
           )}
 
@@ -423,11 +400,11 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 </div>
               </div>
 
-              {/* Statement total validation */}
+              {/* Statement total validation — uses ALL parsed rows, not just selected */}
               {(() => {
-                const uyuTotal = pdfRows.filter((r) => r.keep && r.currency !== 'USD').reduce((s, r) => s + r.amount, 0);
-                const usdTotal = pdfRows.filter((r) => r.keep && r.currency === 'USD').reduce((s, r) => s + r.amount, 0);
-                const usdCount = pdfRows.filter((r) => r.keep && r.currency === 'USD').length;
+                const uyuTotal = pdfRows.filter((r) => r.currency !== 'USD').reduce((s, r) => s + r.amount, 0);
+                const usdTotal = pdfRows.filter((r) => r.currency === 'USD').reduce((s, r) => s + r.amount, 0);
+                const usdCount = pdfRows.filter((r) => r.currency === 'USD').length;
 
                 if (!pdfPreview.statementTotal) {
                   // No statement total extracted — just show what was parsed
