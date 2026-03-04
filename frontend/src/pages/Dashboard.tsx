@@ -219,8 +219,7 @@ export default function Dashboard() {
             </span>
             <button
               onClick={handleNextMonth}
-              disabled={isCurrentMonth}
-              className="p-1 rounded-lg text-surface-400 hover:text-white hover:bg-surface-700 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+              className="p-1 rounded-lg text-surface-400 hover:text-white hover:bg-surface-700 transition-colors"
             >
               <ChevronRight size={16} />
             </button>

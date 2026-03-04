@@ -33,10 +33,11 @@ interface PdfRow {
   installmentTotal: number | null;
   institution: string;
   keep: boolean;
-  categoryId: string;       // '' = use default
-  categoryHint: string | null; // nameEs of auto-detected category
-  possibleDuplicate?: boolean; // true = ya existe una tx similar en la BD
-  isRecurring?: boolean;    // marcar como recurrente
+  categoryId: string;          // '' = use default
+  subcategoryId: string | null; // null = no subcategory
+  categoryHint: string | null;  // nameEs of auto-detected category
+  possibleDuplicate?: boolean;  // true = ya existe una tx similar en la BD
+  isRecurring?: boolean;        // marcar como recurrente
 }
 
 interface PdfPreviewResult {
@@ -87,8 +88,14 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   const [pdfRows, setPdfRows] = useState<PdfRow[]>([]);
   const [importBatchId, setImportBatchId] = useState<string | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
-  // prompt for bulk-apply when user changes a category on a row with siblings
-  const [bulkPrompt, setBulkPrompt] = useState<{ description: string; newCategoryId: string; count: number } | null>(null);
+  // prompt for bulk-apply when user changes a category/subcategory on a row with siblings
+  const [bulkPrompt, setBulkPrompt] = useState<{
+    field: 'category' | 'subcategory';
+    description: string;
+    newCategoryId: string;
+    newSubcategoryId?: string | null;
+    count: number;
+  } | null>(null);
 
   const stepLabels = mode === 'pdf' ? PDF_STEP_LABELS : CSV_STEP_LABELS;
 
@@ -150,6 +157,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
         ...r,
         keep: !r.possibleDuplicate,   // duplicados empiezan deseleccionados
         categoryId: r.categoryId ?? '',
+        subcategoryId: (r as { subcategoryId?: string | null }).subcategoryId ?? null,
         categoryHint: r.categoryHint ?? null,
         isRecurring: false,
       })));
@@ -191,22 +199,46 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   // ── Handle inline category change with optional bulk-apply prompt ──────────
   const handleRowCategoryChange = (rowIndex: number, newCategoryId: string) => {
     const row = pdfRows[rowIndex];
-    setPdfRows((prev) => prev.map((r, idx) => idx === rowIndex ? { ...r, categoryId: newCategoryId } : r));
+    // Changing category clears subcategory for that row
+    setPdfRows((prev) => prev.map((r, idx) =>
+      idx === rowIndex ? { ...r, categoryId: newCategoryId, subcategoryId: null } : r
+    ));
     const siblingsCount = pdfRows.filter((r, idx) =>
       idx !== rowIndex && r.keep && r.description === row.description && !r.categoryId
     ).length;
     if (siblingsCount > 0 && newCategoryId) {
-      setBulkPrompt({ description: row.description, newCategoryId, count: siblingsCount });
+      setBulkPrompt({ field: 'category', description: row.description, newCategoryId, count: siblingsCount });
+    }
+  };
+
+  const handleRowSubcategoryChange = (rowIndex: number, newSubcategoryId: string) => {
+    const row = pdfRows[rowIndex];
+    setPdfRows((prev) => prev.map((r, idx) =>
+      idx === rowIndex ? { ...r, subcategoryId: newSubcategoryId || null } : r
+    ));
+    const siblingsCount = pdfRows.filter((r, idx) =>
+      idx !== rowIndex && r.keep && r.description === row.description && r.categoryId === row.categoryId && !r.subcategoryId
+    ).length;
+    if (siblingsCount > 0 && newSubcategoryId) {
+      setBulkPrompt({ field: 'subcategory', description: row.description, newCategoryId: row.categoryId, newSubcategoryId, count: siblingsCount });
     }
   };
 
   const handleBulkApply = () => {
     if (!bulkPrompt) return;
-    setPdfRows((prev) => prev.map((r) =>
-      r.description === bulkPrompt.description && !r.categoryId
-        ? { ...r, categoryId: bulkPrompt.newCategoryId }
-        : r
-    ));
+    if (bulkPrompt.field === 'category') {
+      setPdfRows((prev) => prev.map((r) =>
+        r.description === bulkPrompt.description && !r.categoryId
+          ? { ...r, categoryId: bulkPrompt.newCategoryId }
+          : r
+      ));
+    } else {
+      setPdfRows((prev) => prev.map((r) =>
+        r.description === bulkPrompt.description && r.categoryId === bulkPrompt.newCategoryId && !r.subcategoryId
+          ? { ...r, subcategoryId: bulkPrompt.newSubcategoryId ?? null }
+          : r
+      ));
+    }
     setBulkPrompt(null);
   };
 
@@ -517,7 +549,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
               {bulkPrompt && (
                 <div className="flex items-center gap-3 px-3 py-2.5 bg-primary-500/10 border border-primary-500/30 rounded-xl text-xs">
                   <span className="text-surface-300 flex-1 min-w-0">
-                    ¿Aplicar también a las <strong className="text-white">{bulkPrompt.count}</strong> filas de <strong className="text-white">"{bulkPrompt.description.slice(0, 28)}{bulkPrompt.description.length > 28 ? '…' : ''}"</strong>?
+                    ¿Aplicar la misma {bulkPrompt.field === 'subcategory' ? 'subclasificación' : 'categoría'} a las <strong className="text-white">{bulkPrompt.count}</strong> filas de <strong className="text-white">"{bulkPrompt.description.slice(0, 28)}{bulkPrompt.description.length > 28 ? '…' : ''}"</strong>?
                   </span>
                   <button onClick={handleBulkApply} className="text-primary-400 font-semibold hover:text-primary-300 whitespace-nowrap">Sí, todas</button>
                   <button onClick={() => setBulkPrompt(null)} className="text-surface-500 hover:text-surface-300 whitespace-nowrap">Solo esta</button>
@@ -578,6 +610,24 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                               <option key={c.id} value={c.id}>{c.icon} {c.nameEs}</option>
                             ))}
                           </select>
+                          {/* Subcategory selector — only if selected category has subcategories */}
+                          {(() => {
+                            const cat = row.categoryId ? categories.find((c) => c.id === row.categoryId) : null;
+                            const subs = cat?.subcategories ?? [];
+                            if (!cat || subs.length === 0) return null;
+                            return (
+                              <select
+                                value={row.subcategoryId ?? ''}
+                                onChange={(e) => handleRowSubcategoryChange(i, e.target.value)}
+                                className="mt-1 text-[10px] px-1.5 py-1 rounded-lg border max-w-[110px] bg-surface-900 border-surface-700 text-surface-400 focus:outline-none focus:ring-1 focus:ring-primary-500/40 block"
+                              >
+                                <option value="">— sub. —</option>
+                                {subs.map((s) => (
+                                  <option key={s.id} value={s.id}>{s.nameEs ?? s.name}</option>
+                                ))}
+                              </select>
+                            );
+                          })()}
                         </td>
                         <td className="px-2 py-1.5 text-center">
                           <button

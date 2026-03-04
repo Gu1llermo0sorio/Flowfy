@@ -207,6 +207,7 @@ interface ParsedTx {
   keep: boolean;
   categoryHint: string | null;  // nameEs of matched category
   categoryId: string | null;    // resolved after DB lookup
+  subcategoryId?: string | null; // resolved from learned history
   possibleDuplicate?: boolean;  // true when similar tx already exists in DB
 }
 
@@ -549,29 +550,33 @@ importRouter.post('/pdf-preview', pdfUpload.single('file'), async (req: AuthRequ
       prisma.category.findMany({ where: { familyId: req.familyId! }, select: { id: true, nameEs: true } }),
       prisma.transaction.findMany({
         where: { familyId: req.familyId! },
-        select: { description: true, categoryId: true },
+        select: { description: true, categoryId: true, subcategoryId: true },
         orderBy: { date: 'asc' }, // oldest first → newest overwrites
         take: 2000,
       }),
     ]);
 
-    // Build learned map: normalized description → categoryId
+    // Build learned maps: normalized description → categoryId / subcategoryId
     const learnedMap = new Map<string, string>();
+    const learnedSubcategoryMap = new Map<string, string | null>();
     for (const tx of learnedTxs) {
       const key = normalizeDesc(tx.description);
-      if (key.length >= 3) learnedMap.set(key, tx.categoryId);
+      if (key.length >= 3) {
+        learnedMap.set(key, tx.categoryId);
+        learnedSubcategoryMap.set(key, tx.subcategoryId ?? null);
+      }
     }
 
     const resolvedRows = regexRows.map((row) => {
       // 1. Learning takes priority (user already classified this merchant before)
       const descKey = normalizeDesc(row.description);
       const learnedId = learnedMap.get(descKey);
-      if (learnedId) return { ...row, categoryId: learnedId };
+      if (learnedId) return { ...row, categoryId: learnedId, subcategoryId: learnedSubcategoryMap.get(descKey) ?? null };
       // 2. Static keyword hint
       const hintId = row.categoryHint
         ? (userCategories.find((c) => c.nameEs === row.categoryHint)?.id ?? null)
         : null;
-      return { ...row, categoryId: hintId };
+      return { ...row, categoryId: hintId, subcategoryId: null };
     });
 
     // If regex found enough transactions, use them; otherwise try AI
@@ -687,6 +692,7 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
         amount: number;
         type: 'income' | 'expense';
         categoryId?: string | null;
+        subcategoryId?: string | null;
         currency?: string;
         installmentCurrent?: number | null;
         installmentTotal?: number | null;
@@ -730,6 +736,7 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
             date: new Date(r.date),
             type: r.type,
             categoryId: r.categoryId ?? defaultCategoryId,
+            subcategoryId: r.subcategoryId ?? null,
             userId: req.userId!,
             familyId: req.familyId!,
             tags: [],
