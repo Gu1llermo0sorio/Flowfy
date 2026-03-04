@@ -165,10 +165,15 @@ function ImportManagementSection() {
   const addToast = useUIStore((s) => s.addToast);
   const [confirmBatchId, setConfirmBatchId] = useState<string | null>(null);
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+
+  // Range delete state — 3 steps: form → preview → confirm
   const [rangeFrom, setRangeFrom] = useState('');
   const [rangeTo, setRangeTo] = useState('');
   const [rangeTxType, setRangeTxType] = useState<'all' | 'expense' | 'income'>('all');
-  const [rangeConfirm, setRangeConfirm] = useState(false);
+  type RangePreview = { count: number; totalAmountUYU: number } | null;
+  const [rangePreview, setRangePreview] = useState<RangePreview>(null);
+  const [rangePreviewLoading, setRangePreviewLoading] = useState(false);
+  const [rangeConfirmText, setRangeConfirmText] = useState('');
   const [rangeLoading, setRangeLoading] = useState(false);
 
   const { data: batches = [], isLoading, refetch } = useQuery<ImportBatch[]>({
@@ -194,8 +199,25 @@ function ImportManagementSection() {
     }
   };
 
-  const handleRangeDelete = async () => {
+  const handleRangePreview = async () => {
     if (!rangeFrom || !rangeTo) return;
+    setRangePreviewLoading(true);
+    setRangePreview(null);
+    setRangeConfirmText('');
+    try {
+      const params = new URLSearchParams({ from: rangeFrom, to: rangeTo });
+      if (rangeTxType !== 'all') params.set('txType', rangeTxType);
+      const { data } = await apiClient.get<{ success: boolean; data: RangePreview }>(`/family/transactions/range/preview?${params}`);
+      setRangePreview(data.data);
+    } catch {
+      addToast({ type: 'error', message: 'No se pudo obtener la vista previa' });
+    } finally {
+      setRangePreviewLoading(false);
+    }
+  };
+
+  const handleRangeDelete = async () => {
+    if (!rangeFrom || !rangeTo || rangeConfirmText !== 'ELIMINAR') return;
     setRangeLoading(true);
     try {
       const { data } = await apiClient.delete<{ success: boolean; data: { deleted: number } }>('/family/transactions/range', {
@@ -203,7 +225,8 @@ function ImportManagementSection() {
       });
       addToast({ type: 'success', message: `${data.data.deleted} transacciones eliminadas del período` });
       qc.invalidateQueries();
-      setRangeConfirm(false);
+      setRangePreview(null);
+      setRangeConfirmText('');
       setRangeFrom('');
       setRangeTo('');
     } catch {
@@ -216,6 +239,8 @@ function ImportManagementSection() {
   const fmt = (iso: string | null) => iso
     ? new Date(iso).toLocaleDateString('es-UY', { day: 'numeric', month: 'short', year: '2-digit' })
     : '?';
+
+  const txTypeLabel = rangeTxType === 'all' ? 'todos los movimientos' : rangeTxType === 'expense' ? 'solo gastos' : 'solo ingresos';
 
   return (
     <div className="card p-5 space-y-5">
@@ -287,52 +312,89 @@ function ImportManagementSection() {
         </div>
       )}
 
-      {/* Date range delete */}
+      {/* Date range delete — 3-step flow: form → preview → confirm */}
       <div className="pt-3 border-t border-surface-700 space-y-3">
         <h4 className="text-xs font-semibold text-surface-400 flex items-center gap-2">
           <Calendar className="w-3.5 h-3.5" />
           Eliminar por período
         </h4>
+
+        {/* Step 1: date inputs + type */}
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-[11px] text-surface-500 block mb-1">Desde</label>
-            <input type="date" value={rangeFrom} onChange={(e) => { setRangeFrom(e.target.value); setRangeConfirm(false); }}
+            <input type="date" value={rangeFrom}
+              onChange={(e) => { setRangeFrom(e.target.value); setRangePreview(null); setRangeConfirmText(''); }}
               className="input w-full text-xs py-1.5" />
           </div>
           <div>
             <label className="text-[11px] text-surface-500 block mb-1">Hasta</label>
-            <input type="date" value={rangeTo} onChange={(e) => { setRangeTo(e.target.value); setRangeConfirm(false); }}
+            <input type="date" value={rangeTo}
+              onChange={(e) => { setRangeTo(e.target.value); setRangePreview(null); setRangeConfirmText(''); }}
               className="input w-full text-xs py-1.5" />
           </div>
         </div>
         <div className="flex gap-2 items-center">
-          <select value={rangeTxType} onChange={(e) => setRangeTxType(e.target.value as 'all' | 'expense' | 'income')}
+          <select value={rangeTxType}
+            onChange={(e) => { setRangeTxType(e.target.value as 'all' | 'expense' | 'income'); setRangePreview(null); setRangeConfirmText(''); }}
             className="input text-xs py-1.5 flex-1">
             <option value="all">Todos los movimientos</option>
             <option value="expense">Solo gastos</option>
             <option value="income">Solo ingresos</option>
           </select>
-          {!rangeConfirm ? (
-            <button
-              onClick={() => setRangeConfirm(true)}
-              disabled={!rangeFrom || !rangeTo}
-              className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-danger-500/40 text-danger-400 hover:bg-danger-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-            >
-              Eliminar período
-            </button>
-          ) : (
-            <div className="flex gap-1.5">
-              <button onClick={() => void handleRangeDelete()} disabled={rangeLoading}
-                className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-danger-600 hover:bg-danger-500 text-white transition-colors">
-                {rangeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Confirmar'}
-              </button>
-              <button onClick={() => setRangeConfirm(false)}
-                className="px-3 py-1.5 text-xs rounded-xl text-surface-400 hover:text-surface-200 border border-surface-700 transition-colors">
-                Cancelar
-              </button>
-            </div>
-          )}
+          <button
+            onClick={() => void handleRangePreview()}
+            disabled={!rangeFrom || !rangeTo || rangePreviewLoading}
+            className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-surface-600 text-surface-300 hover:bg-surface-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+          >
+            {rangePreviewLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Vista previa'}
+          </button>
         </div>
+
+        {/* Step 2: Preview result + confirmation input */}
+        {rangePreview !== null && (
+          <div className="rounded-xl border border-danger-500/30 bg-danger-500/5 p-3 space-y-3">
+            {rangePreview.count === 0 ? (
+              <p className="text-sm text-surface-400 text-center">No hay movimientos en ese período con ese filtro.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-danger-500/20 flex items-center justify-center flex-shrink-0">
+                    <Trash2 className="w-4 h-4 text-danger-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-danger-300">
+                      {rangePreview.count} movimiento{rangePreview.count !== 1 ? 's' : ''} · {formatCurrency(rangePreview.totalAmountUYU)}
+                    </p>
+                    <p className="text-[11px] text-surface-500">
+                      {txTypeLabel} · {fmt(rangeFrom)} – {fmt(rangeTo)}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] text-surface-400 block mb-1">
+                    Escribí <span className="font-mono font-bold text-danger-400">ELIMINAR</span> para confirmar
+                  </label>
+                  <input
+                    type="text"
+                    value={rangeConfirmText}
+                    onChange={(e) => setRangeConfirmText(e.target.value)}
+                    placeholder="ELIMINAR"
+                    className="input w-full text-xs py-1.5 font-mono"
+                    autoComplete="off"
+                  />
+                </div>
+                <button
+                  onClick={() => void handleRangeDelete()}
+                  disabled={rangeConfirmText !== 'ELIMINAR' || rangeLoading}
+                  className="w-full px-3 py-2 text-sm font-semibold rounded-xl bg-danger-600 hover:bg-danger-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {rangeLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : `Eliminar ${rangePreview.count} movimiento${rangePreview.count !== 1 ? 's' : ''} definitivamente`}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -254,6 +254,38 @@ familyRouter.delete('/data', async (req: AuthRequest, res, next) => {
   }
 });
 
+// ── GET /api/family/transactions/range/preview — preview what would be deleted ──
+familyRouter.get('/transactions/range/preview', async (req: AuthRequest, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { role: true } });
+    if (user?.role !== 'owner') throw createError('Solo el propietario puede hacer esto', 403, 'FORBIDDEN');
+
+    const { from, to, txType } = req.query as { from?: string; to?: string; txType?: string };
+    if (!from || !to) throw createError('Se requieren fechas from y to', 400, 'INVALID_RANGE');
+
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    toDate.setHours(23, 59, 59, 999);
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) throw createError('Fechas inválidas', 400, 'INVALID_DATE');
+    if (fromDate > toDate) throw createError('La fecha desde debe ser anterior a la fecha hasta', 400, 'INVALID_RANGE');
+
+    const where: { familyId: string; date: object; type?: string } = {
+      familyId: req.familyId!,
+      date: { gte: fromDate, lte: toDate },
+    };
+    if (txType === 'expense' || txType === 'income') where.type = txType;
+
+    const [count, aggregate] = await Promise.all([
+      prisma.transaction.count({ where }),
+      prisma.transaction.aggregate({ where, _sum: { amountUYU: true } }),
+    ]);
+
+    res.json({ success: true, data: { count, totalAmountUYU: aggregate._sum.amountUYU ?? 0 } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── DELETE /api/family/transactions/range — delete transactions in date range ──
 familyRouter.delete('/transactions/range', async (req: AuthRequest, res, next) => {
   try {

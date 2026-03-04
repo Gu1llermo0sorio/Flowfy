@@ -1,9 +1,12 @@
+import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, Plus, Unlock } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, Plus, Unlock, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { format, addMonths, subMonths } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { apiClient } from '../lib/apiClient';
-import { formatCurrency, getMonthName } from '../lib/formatters';
+import { formatCurrency } from '../lib/formatters';
 import { useAuthStore } from '../stores/authStore';
 import type { MonthlySummary, Transaction } from '../types';
 
@@ -50,12 +53,101 @@ function StatCard({
   );
 }
 
+interface ProjectionMonth {
+  year: number;
+  month: number;
+  totalAmountUYU: number;
+  items: Array<{
+    description: string;
+    amountUYU: number;
+    currency: string;
+    currentInstallment: number;
+    totalInstallments: number;
+    categoryIcon: string;
+    categoryColor: string;
+  }>;
+}
+
+// ------------------------------------------------------------------ ProjectionWidget
+function ProjectionWidget({ months }: { months: ProjectionMonth[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <CreditCard className="w-4 h-4 text-primary-400" />
+        <h2 className="font-semibold text-surface-50">Cuotas pendientes por mes</h2>
+      </div>
+      <p className="text-xs text-surface-500">Proyección de cuotas de tarjeta que se cobrarán en los próximos meses</p>
+      <div className="space-y-2">
+        {months.map((m) => {
+          const key = `${m.year}-${m.month}`;
+          const label = `${monthNames[m.month - 1]} ${m.year}`;
+          const isOpen = expanded === key;
+          return (
+            <div key={key} className="rounded-xl border border-surface-700 overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-surface-700/50 transition-colors text-left"
+                onClick={() => setExpanded(isOpen ? null : key)}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-surface-200">{label}</span>
+                  <span className="text-[11px] text-surface-500">{m.items.length} cuota{m.items.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm font-bold text-danger-400">-{formatCurrency(m.totalAmountUYU)}</span>
+                  <ChevronRight className={`w-3.5 h-3.5 text-surface-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                </div>
+              </button>
+              {isOpen && (
+                <div className="border-t border-surface-700 divide-y divide-surface-700/50">
+                  {m.items.map((item, i) => (
+                    <div key={i} className="flex items-center gap-2.5 px-3 py-2">
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
+                        style={{ backgroundColor: item.categoryColor + '22', border: `1px solid ${item.categoryColor}44` }}
+                      >
+                        {item.categoryIcon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-surface-200 truncate">{item.description}</p>
+                        <p className="text-[10px] text-surface-500">cuota {item.currentInstallment}/{item.totalInstallments}</p>
+                      </div>
+                      <span className="font-mono text-xs text-danger-400 font-semibold flex-shrink-0">
+                        -{formatCurrency(item.amountUYU, item.currency === 'USD' ? 'USD' : 'UYU')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-surface-500 text-center">Basado en cuotas importadas desde PDF · expandí cada mes para ver el detalle</p>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ component
 export default function Dashboard() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
 
   const now = new Date();
+  const [refDate, setRefDate] = useState(now);
+
+  const month = refDate.getMonth() + 1;
+  const year = refDate.getFullYear();
+  const isCurrentMonth = refDate.getMonth() === now.getMonth() && refDate.getFullYear() === now.getFullYear();
+  const monthLabel = format(refDate, 'MMMM yyyy', { locale: es });
+  const monthLabel1st = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+
+  const handlePrevMonth = useCallback(() => setRefDate((d) => subMonths(d, 1)), []);
+  const handleNextMonth = useCallback(() => setRefDate((d) => addMonths(d, 1)), []);
 
   // Installments liberation query
   const { data: liberationData } = useQuery({
@@ -66,8 +158,17 @@ export default function Dashboard() {
     },
     staleTime: 5 * 60 * 1000,
   });
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
+
+  // Installments projection query
+  const { data: projectionData } = useQuery({
+    queryKey: ['installments-projection'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ success: boolean; data: { projection: ProjectionMonth[] } }>('/import/installments-projection?months=6');
+      return data.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const projectionMonths = projectionData?.projection?.filter((m) => m.totalAmountUYU > 0) ?? [];
 
   const { data: summary, isLoading: summaryLoading } = useQuery<MonthlySummary>({
     queryKey: ['monthly-summary', month, year],
@@ -91,17 +192,39 @@ export default function Dashboard() {
 
   const loading = summaryLoading || txLoading;
 
+  // Detect empty current month: if we're on current month, it's empty, but recent transactions exist in a different month
+  const currentMonthIsEmpty = isCurrentMonth && !summaryLoading && (summary?.income ?? 0) === 0 && (summary?.expenses ?? 0) === 0;
+  const recentTxMonth = recentTx?.data?.[0]?.date ? new Date(recentTx.data[0].date) : null;
+  const showEmptyMonthBanner = currentMonthIsEmpty && recentTxMonth !== null && (recentTxMonth.getMonth() !== now.getMonth() || recentTxMonth.getFullYear() !== now.getFullYear());
+  const lastActiveMonthLabel = recentTxMonth ? format(recentTxMonth, 'MMMM yyyy', { locale: es }) : '';
+  const lastActiveMonthLabelCap = lastActiveMonthLabel.charAt(0).toUpperCase() + lastActiveMonthLabel.slice(1);
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Greeting */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs text-surface-500 uppercase tracking-widest font-medium">
-            {getMonthName(month)} {year}
-          </p>
-          <h1 className="text-lg font-semibold text-surface-100 mt-0.5">
-            Hola, {user?.name?.split(' ')[0]}
-          </h1>
+      {/* Greeting + month nav */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div>
+            <h1 className="text-lg font-semibold text-surface-100">
+              Hola, {user?.name?.split(' ')[0]}
+            </h1>
+          </div>
+          {/* Month navigator */}
+          <div className="flex items-center gap-1 bg-surface-800 border border-surface-700 rounded-xl px-1 py-0.5">
+            <button onClick={handlePrevMonth} className="p-1 rounded-lg text-surface-400 hover:text-white hover:bg-surface-700 transition-colors">
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-xs font-medium text-surface-200 px-1.5 whitespace-nowrap min-w-[110px] text-center">
+              {monthLabel1st}
+            </span>
+            <button
+              onClick={handleNextMonth}
+              disabled={isCurrentMonth}
+              className="p-1 rounded-lg text-surface-400 hover:text-white hover:bg-surface-700 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
         <button
           onClick={() => navigate('/transactions')}
@@ -111,6 +234,22 @@ export default function Dashboard() {
           <span className="hidden sm:inline">Nuevo movimiento</span>
         </button>
       </div>
+
+      {/* Empty current month banner */}
+      {showEmptyMonthBanner && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-amber-300">No hay movimientos en Marzo 2026</p>
+            <p className="text-xs text-amber-400/70 mt-0.5">Tu actividad más reciente está en {lastActiveMonthLabelCap}</p>
+          </div>
+          <button
+            onClick={() => setRefDate(recentTxMonth!)}
+            className="text-xs font-semibold text-amber-300 hover:text-amber-200 bg-amber-500/20 hover:bg-amber-500/30 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+          >
+            Ir a {lastActiveMonthLabelCap}
+          </button>
+        </div>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -156,7 +295,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="font-semibold text-surface-50 text-base">Gastos por categoría</h2>
-              <p className="text-xs text-surface-500 mt-0.5">{getMonthName(new Date().getMonth() + 1)} {new Date().getFullYear()}</p>
+              <p className="text-xs text-surface-500 mt-0.5">{monthLabel1st}</p>
             </div>
             <div className="text-right">
               <p className="text-xs text-surface-500">Total gastado</p>
@@ -338,7 +477,8 @@ export default function Dashboard() {
             {liberationData.liberation.map((item, i) => {
               const freeDateLabel = (() => {
                 const d = new Date(item.freeDate + 'T12:00:00');
-                return `${getMonthName(d.getMonth() + 1)} ${d.getFullYear()}`;
+                const lbl = format(d, 'MMMM yyyy', { locale: es });
+                return lbl.charAt(0).toUpperCase() + lbl.slice(1);
               })();
               return (
                 <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-surface-700/30 transition-colors">
@@ -363,6 +503,11 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Installment monthly projection */}
+      {projectionMonths.length > 0 && (
+        <ProjectionWidget months={projectionMonths} />
+      )}
+
       {/* XP progress */}
       {user && (
         <div className="card p-4">
@@ -380,7 +525,7 @@ export default function Dashboard() {
             <div
               className="progress-fill bg-gradient-to-r from-primary-500 to-accent-500"
               style={{
-                width: `${Math.min((user.xp / user.nextLevelXp) * 100, 100)}%`,
+                width: `${Math.min((user.xp / (user.nextLevelXp ?? 100)) * 100, 100)}%`,
               }}
             />
           </div>

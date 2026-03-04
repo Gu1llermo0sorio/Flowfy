@@ -775,6 +775,165 @@ importRouter.get('/batches', async (req: AuthRequest, res, next) => {
   }
 });
 
+// ── GET /api/import/installments-liberation — cuotas que se liberan pronto ────
+importRouter.get('/installments-liberation', async (req: AuthRequest, res, next) => {
+  try {
+    const monthsAhead = Math.min(parseInt(req.query['months'] as string ?? '3') || 3, 12);
+
+    // All OCA installment transactions for this family
+    const installments = await prisma.transaction.findMany({
+      where: {
+        familyId: req.familyId!,
+        isOcaInstallment: true,
+        ocaTotalInstallments: { gt: 1 },
+      },
+      select: {
+        id: true, description: true, amountUYU: true, amount: true, currency: true,
+        date: true, ocaCurrentInstallment: true, ocaTotalInstallments: true,
+        category: { select: { nameEs: true, icon: true } },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const now = new Date();
+    const cutoff = new Date(now.getFullYear(), now.getMonth() + monthsAhead, 1);
+
+    // Find items where the last cuota falls within the window
+    const liberation: Array<{
+      description: string; amountUYU: number; currency: string;
+      categoryName: string; categoryIcon: string;
+      current: number; total: number; remainingMonths: number; freeDate: string;
+    }> = [];
+
+    const seen = new Set<string>(); // avoid duplicates (multiple cuotas of same purchase)
+
+    for (const tx of installments) {
+      const cur = tx.ocaCurrentInstallment ?? 1;
+      const total = tx.ocaTotalInstallments ?? 1;
+      if (cur < 1 || total < 1) continue;
+
+      // Key: description + total (identifies the purchase)
+      const key = `${tx.description.toLowerCase().trim()}|${total}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      // Date of last cuota: date + (total - cur) months
+      const txDate = new Date(tx.date);
+      const freeMonth = new Date(txDate.getFullYear(), txDate.getMonth() + (total - cur) + 1, 1);
+
+      if (freeMonth > now && freeMonth <= cutoff) {
+        const lastCuotaDate = new Date(txDate.getFullYear(), txDate.getMonth() + (total - cur), txDate.getDate());
+        liberation.push({
+          description: tx.description,
+          amountUYU: tx.amountUYU,
+          currency: tx.currency,
+          categoryName: tx.category?.nameEs ?? 'Sin categoría',
+          categoryIcon: tx.category?.icon ?? '💳',
+          current: cur,
+          total,
+          remainingMonths: total - cur,
+          freeDate: lastCuotaDate.toISOString().split('T')[0],
+        });
+      }
+    }
+
+    // Sort by freeDate ascending
+    liberation.sort((a, b) => a.freeDate.localeCompare(b.freeDate));
+
+    const totalMonthlyLiberated = liberation
+      .filter(it => it.remainingMonths === 0)
+      .reduce((s, it) => s + it.amountUYU, 0);
+
+    res.json({ success: true, data: { liberation, totalMonthlyLiberated } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/import/installments-projection — proyección mensual de cuotas ───
+importRouter.get('/installments-projection', async (req: AuthRequest, res, next) => {
+  try {
+    const monthsAhead = Math.min(parseInt(req.query['months'] as string ?? '6') || 6, 24);
+
+    const installments = await prisma.transaction.findMany({
+      where: {
+        familyId: req.familyId!,
+        isOcaInstallment: true,
+        ocaTotalInstallments: { gt: 1 },
+      },
+      select: {
+        id: true, description: true, amountUYU: true, currency: true,
+        date: true, ocaCurrentInstallment: true, ocaTotalInstallments: true,
+        category: { select: { nameEs: true, icon: true, color: true } },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const now = new Date();
+    // Start of current month
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Build by-month projection map
+    // Key: "YYYY-MM"
+    const monthMap = new Map<string, {
+      year: number; month: number;
+      items: Array<{ description: string; amountUYU: number; currency: string; currentInstallment: number; totalInstallments: number; categoryIcon: string; categoryColor: string }>;
+    }>();
+
+    // Pre-fill months
+    for (let m = 0; m <= monthsAhead; m++) {
+      const d = new Date(startMonth.getFullYear(), startMonth.getMonth() + m, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthMap.set(key, { year: d.getFullYear(), month: d.getMonth() + 1, items: [] });
+    }
+
+    // Deduplicate installment purchases: keep only the most-recent (highest cur) per purchase
+    const purchaseMap = new Map<string, typeof installments[number]>();
+    for (const tx of installments) {
+      const key = `${tx.description.toLowerCase().trim()}|${tx.ocaTotalInstallments}`;
+      const existing = purchaseMap.get(key);
+      const curNew = tx.ocaCurrentInstallment ?? 1;
+      const curEx = existing?.ocaCurrentInstallment ?? 0;
+      if (!existing || curNew > curEx) purchaseMap.set(key, tx);
+    }
+
+    for (const tx of purchaseMap.values()) {
+      const cur = tx.ocaCurrentInstallment ?? 1;
+      const total = tx.ocaTotalInstallments ?? 1;
+      const txDate = new Date(tx.date);
+
+      // Project each remaining installment (cur+1 to total)
+      for (let installNum = cur + 1; installNum <= total; installNum++) {
+        const monthsFromTx = installNum - cur; // e.g., next cuota is 1 month ahead
+        const projDate = new Date(txDate.getFullYear(), txDate.getMonth() + monthsFromTx, 1);
+        const projKey = `${projDate.getFullYear()}-${String(projDate.getMonth() + 1).padStart(2, '0')}`;
+
+        const entry = monthMap.get(projKey);
+        if (entry) {
+          entry.items.push({
+            description: tx.description,
+            amountUYU: tx.amountUYU,
+            currency: tx.currency,
+            currentInstallment: installNum,
+            totalInstallments: total,
+            categoryIcon: tx.category?.icon ?? '💳',
+            categoryColor: tx.category?.color ?? '#6366f1',
+          });
+        }
+      }
+    }
+
+    const projection = Array.from(monthMap.values()).map((m) => ({
+      ...m,
+      totalAmountUYU: m.items.reduce((s, it) => s + it.amountUYU, 0),
+    }));
+
+    res.json({ success: true, data: { projection } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── DELETE /api/import/batch/:batchId — delete all transactions in a batch ───
 // Also wired to the undo button in ImportCSVModal immediately after confirming
 importRouter.delete('/batch/:batchId', async (req: AuthRequest, res, next) => {

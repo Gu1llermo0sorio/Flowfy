@@ -54,14 +54,25 @@ export default function TopNav() {
 
   const isAdmin = user?.role === 'ADMIN';
 
-  // Cerrar dropdown con Escape
+  // Cerrar dropdown con Escape o click fuera (evita el conflicto de z-index con el backdrop)
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setProfileOpen(false);
+    if (!profileOpen) return;
+    function handleOutside(e: MouseEvent | KeyboardEvent) {
+      if (e instanceof KeyboardEvent) {
+        if (e.key === 'Escape') setProfileOpen(false);
+        return;
+      }
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
     }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleOutside);
+    };
+  }, [profileOpen]);
 
   const handleLogout = async () => {
     setProfileOpen(false);
@@ -154,14 +165,6 @@ export default function TopNav() {
         </button>
 
         {/* Profile dropdown */}
-        {/* Backdrop: closes dropdown when clicking anywhere outside */}
-        {profileOpen && (
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setProfileOpen(false)}
-            aria-hidden
-          />
-        )}
         <div ref={profileRef} className="relative z-50">
           <button
             onClick={() => setProfileOpen((v) => !v)}

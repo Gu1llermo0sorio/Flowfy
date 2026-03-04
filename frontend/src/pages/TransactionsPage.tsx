@@ -350,7 +350,12 @@ function TransactionRow({ tx, onEdit, onDelete }: RowProps) {
             {isExpense ? '-' : '+'}{formatCurrency(tx.amount, tx.currency)}
           </p>
           {tx.currency !== 'UYU' && (
-            <p className="text-[10px] text-surface-500">≈ {formatCurrency(tx.amountUYU, 'UYU')}</p>
+            <div className="text-right">
+              <p className="text-[10px] text-surface-500">≈ {formatCurrency(tx.amountUYU, 'UYU')}</p>
+              {tx.exchangeRateUsed != null && (
+                <p className="text-[10px] text-surface-500/60">TC ${tx.exchangeRateUsed.toFixed(0)}</p>
+              )}
+            </div>
           )}
         </div>
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
