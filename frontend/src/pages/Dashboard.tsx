@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, Plus, Unlock, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, Plus, Unlock, ChevronLeft, ChevronRight, CreditCard, Repeat } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, addMonths, subMonths } from 'date-fns';
@@ -12,6 +12,7 @@ import type { MonthlySummary, Transaction } from '../types';
 
 // ------------------------------------------------------------------ types
 interface LiberationItem {
+  id: string;
   description: string;
   amountUYU: number;
   currency: string;
@@ -21,6 +22,7 @@ interface LiberationItem {
   total: number;
   remainingMonths: number;
   freeDate: string;
+  isRecurring: boolean;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -149,14 +151,26 @@ export default function Dashboard() {
   const handlePrevMonth = useCallback(() => setRefDate((d) => subMonths(d, 1)), []);
   const handleNextMonth = useCallback(() => setRefDate((d) => addMonths(d, 1)), []);
 
-  // Installments liberation query
+  // Installments liberation query — filtered by selected month
+  const qc = useQueryClient();
   const { data: liberationData } = useQuery({
-    queryKey: ['installments-liberation'],
+    queryKey: ['installments-liberation', month, year],
     queryFn: async () => {
-      const { data } = await apiClient.get<{ success: boolean; data: { liberation: LiberationItem[]; totalMonthlyLiberated: number } }>('/import/installments-liberation?months=3');
+      const { data } = await apiClient.get<{ success: boolean; data: { liberation: LiberationItem[]; totalMonthlyLiberated: number } }>(`/import/installments-liberation?month=${month}&year=${year}`);
       return data.data;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Mutation to toggle isRecurring on a transaction
+  const toggleRecurringMut = useMutation({
+    mutationFn: async ({ id, isRecurring }: { id: string; isRecurring: boolean }) => {
+      await apiClient.patch(`/transactions/${id}`, { isRecurring });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['installments-liberation'] });
+      qc.invalidateQueries({ queryKey: ['installments-projection'] });
+    },
   });
 
   // Installments projection query
@@ -458,7 +472,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Installments liberation widget */}
+      {/* Installments liberation widget — filtered by selected month */}
       {liberationData && liberationData.liberation.length > 0 && (
         <div className="card p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -468,7 +482,7 @@ export default function Dashboard() {
             </div>
             {liberationData.totalMonthlyLiberated > 0 && (
               <span className="text-xs bg-positive-500/15 text-positive-400 px-2 py-0.5 rounded-full font-medium">
-                +{formatCurrency(liberationData.totalMonthlyLiberated, 'UYU')} este mes
+                +{formatCurrency(liberationData.totalMonthlyLiberated, 'UYU')}/mes
               </span>
             )}
           </div>
@@ -485,20 +499,27 @@ export default function Dashboard() {
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-surface-100 truncate">{item.description}</p>
                     <p className="text-[10px] text-surface-500">
-                      cuota {item.current}/{item.total}
-                      {item.remainingMonths === 0
-                        ? <span className="text-positive-400 ml-1 font-medium">· última cuota</span>
-                        : <span className="ml-1">· libera en {freeDateLabel}</span>}
+                      cuota {item.current}/{item.total} · última cuota en {freeDateLabel}
                     </p>
                   </div>
                   <span className="font-mono text-xs font-semibold text-surface-300 flex-shrink-0">
                     {formatCurrency(item.amountUYU, 'UYU')}
                   </span>
+                  {/* Toggle recurring: marks this expense as recurring so it won't show as "freed" */}
+                  <button
+                    title="Marcar como gasto recurrente (no se liberará)"
+                    className="p-1 rounded-md text-surface-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors flex-shrink-0"
+                    onClick={() => toggleRecurringMut.mutate({ id: item.id, isRecurring: true })}
+                  >
+                    <Repeat className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               );
             })}
           </div>
-          <p className="text-[10px] text-surface-500 text-center">Solo cuotas de tarjeta importadas · próximos 3 meses</p>
+          <p className="text-[10px] text-surface-500 text-center">
+            Cuotas de tarjeta que terminan de pagarse en {monthLabel1st} · tocá <Repeat className="w-3 h-3 inline" /> para ocultar gastos recurrentes
+          </p>
         </div>
       )}
 

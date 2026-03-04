@@ -134,6 +134,10 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
       setStep(2);
       qc.invalidateQueries({ queryKey: ['transactions'] });
       qc.invalidateQueries({ queryKey: ['monthly-summary'] });
+      qc.invalidateQueries({ queryKey: ['recent-transactions'] });
+      qc.invalidateQueries({ queryKey: ['import-batches'] });
+      qc.invalidateQueries({ queryKey: ['installments-liberation'] });
+      qc.invalidateQueries({ queryKey: ['installments-projection'] });
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
       addToast({ type: 'error', message: err.response?.data?.message ?? 'Error al importar' });
@@ -186,8 +190,13 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
       setImportBatchId(data.data.batchId ?? null);
       setResult(data.data);
       setStep(2);
+      // Invalidate ALL relevant queries so the UI refreshes everywhere
       qc.invalidateQueries({ queryKey: ['transactions'] });
       qc.invalidateQueries({ queryKey: ['monthly-summary'] });
+      qc.invalidateQueries({ queryKey: ['recent-transactions'] });
+      qc.invalidateQueries({ queryKey: ['import-batches'] });
+      qc.invalidateQueries({ queryKey: ['installments-liberation'] });
+      qc.invalidateQueries({ queryKey: ['installments-projection'] });
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
       addToast({ type: 'error', message: err.response?.data?.message ?? 'Error al importar' });
@@ -742,6 +751,10 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                         await apiClient.delete(`/import/batch/${importBatchId}`);
                         qc.invalidateQueries({ queryKey: ['transactions'] });
                         qc.invalidateQueries({ queryKey: ['monthly-summary'] });
+                        qc.invalidateQueries({ queryKey: ['recent-transactions'] });
+                        qc.invalidateQueries({ queryKey: ['import-batches'] });
+                        qc.invalidateQueries({ queryKey: ['installments-liberation'] });
+                        qc.invalidateQueries({ queryKey: ['installments-projection'] });
                         addToast({ type: 'success', message: `${result.imported} transacciones eliminadas` });
                         onClose();
                       } catch {

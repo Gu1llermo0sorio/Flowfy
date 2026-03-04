@@ -784,34 +784,48 @@ importRouter.get('/batches', async (req: AuthRequest, res, next) => {
   }
 });
 
-// ── GET /api/import/installments-liberation — cuotas que se liberan pronto ────
+// ── GET /api/import/installments-liberation — cuotas que se liberan en un mes ──
+// Accepts ?month=MM&year=YYYY to show installments whose LAST cuota falls in that month.
+// If no month/year provided, defaults to current month.
+// Also accepts ?excludeRecurring=true to hide recurring expenses.
 importRouter.get('/installments-liberation', async (req: AuthRequest, res, next) => {
   try {
-    const monthsAhead = Math.min(parseInt(req.query['months'] as string ?? '3') || 3, 12);
+    const now = new Date();
+    const targetMonth = parseInt(req.query['month'] as string) || (now.getMonth() + 1); // 1-12
+    const targetYear = parseInt(req.query['year'] as string) || now.getFullYear();
+    const excludeRecurring = req.query['excludeRecurring'] === 'true';
 
     // All OCA installment transactions for this family
+    const whereClause: Record<string, unknown> = {
+      familyId: req.familyId!,
+      isOcaInstallment: true,
+      ocaTotalInstallments: { gt: 1 },
+    };
+    if (excludeRecurring) {
+      whereClause['isRecurring'] = false;
+    }
+
     const installments = await prisma.transaction.findMany({
-      where: {
-        familyId: req.familyId!,
-        isOcaInstallment: true,
-        ocaTotalInstallments: { gt: 1 },
-      },
+      where: whereClause as any,
       select: {
         id: true, description: true, amountUYU: true, amount: true, currency: true,
         date: true, ocaCurrentInstallment: true, ocaTotalInstallments: true,
+        isRecurring: true,
         category: { select: { nameEs: true, icon: true } },
       },
       orderBy: { date: 'desc' },
     });
 
-    const now = new Date();
-    const cutoff = new Date(now.getFullYear(), now.getMonth() + monthsAhead, 1);
+    // Target month boundaries (1st of targetMonth to 1st of next month)
+    const targetStart = new Date(targetYear, targetMonth - 1, 1);
+    const targetEnd = new Date(targetYear, targetMonth, 1); // exclusive (1st of next month)
 
-    // Find items where the last cuota falls within the window
+    // Find items where the last cuota falls within the target month
     const liberation: Array<{
-      description: string; amountUYU: number; currency: string;
+      id: string; description: string; amountUYU: number; currency: string;
       categoryName: string; categoryIcon: string;
-      current: number; total: number; remainingMonths: number; freeDate: string;
+      current: number; total: number; remainingMonths: number;
+      freeDate: string; isRecurring: boolean;
     }> = [];
 
     const seen = new Set<string>(); // avoid duplicates (multiple cuotas of same purchase)
@@ -826,13 +840,17 @@ importRouter.get('/installments-liberation', async (req: AuthRequest, res, next)
       if (seen.has(key)) continue;
       seen.add(key);
 
-      // Date of last cuota: date + (total - cur) months
+      // The month AFTER the last installment payment = "free month"
+      // freeMonth is the 1st of the month when you stop paying
       const txDate = new Date(tx.date);
       const freeMonth = new Date(txDate.getFullYear(), txDate.getMonth() + (total - cur) + 1, 1);
 
-      if (freeMonth > now && freeMonth <= cutoff) {
+      // Check if freeMonth falls within target month (i.e., last cuota was the month before)
+      if (freeMonth >= targetStart && freeMonth < targetEnd) {
         const lastCuotaDate = new Date(txDate.getFullYear(), txDate.getMonth() + (total - cur), txDate.getDate());
+        const remaining = total - cur;
         liberation.push({
+          id: tx.id,
           description: tx.description,
           amountUYU: tx.amountUYU,
           currency: tx.currency,
@@ -840,8 +858,9 @@ importRouter.get('/installments-liberation', async (req: AuthRequest, res, next)
           categoryIcon: tx.category?.icon ?? '💳',
           current: cur,
           total,
-          remainingMonths: total - cur,
+          remainingMonths: remaining,
           freeDate: lastCuotaDate.toISOString().split('T')[0],
+          isRecurring: tx.isRecurring,
         });
       }
     }
@@ -849,9 +868,7 @@ importRouter.get('/installments-liberation', async (req: AuthRequest, res, next)
     // Sort by freeDate ascending
     liberation.sort((a, b) => a.freeDate.localeCompare(b.freeDate));
 
-    const totalMonthlyLiberated = liberation
-      .filter(it => it.remainingMonths === 0)
-      .reduce((s, it) => s + it.amountUYU, 0);
+    const totalMonthlyLiberated = liberation.reduce((s, it) => s + it.amountUYU, 0);
 
     res.json({ success: true, data: { liberation, totalMonthlyLiberated } });
   } catch (err) {
