@@ -750,7 +750,41 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
       skipped += chunk.length - toCreate.length;
     }
 
-    res.json({ success: true, data: { imported, skipped } });
+    res.json({ success: true, data: { imported, skipped, batchId: importBatchId } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/import/batches — list recent import batches for this family ───────────
+importRouter.get('/batches', async (req: AuthRequest, res, next) => {
+  try {
+    const batches = await prisma.transaction.groupBy({
+      by: ['importBatchId', 'importSource'],
+      where: { familyId: req.familyId!, importBatchId: { not: null } },
+      _count: { id: true },
+      _sum: { amountUYU: true },
+      _min: { date: true },
+      _max: { date: true, createdAt: true },
+      orderBy: { _max: { createdAt: 'desc' } },
+      take: 30,
+    });
+    res.json({ success: true, data: batches });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── DELETE /api/import/batch/:batchId — delete all transactions in a batch ───
+// Also wired to the undo button in ImportCSVModal immediately after confirming
+importRouter.delete('/batch/:batchId', async (req: AuthRequest, res, next) => {
+  try {
+    const { batchId } = req.params;
+    if (!batchId) throw createError('batchId requerido', 400, 'MISSING_PARAM');
+    const { count } = await prisma.transaction.deleteMany({
+      where: { familyId: req.familyId!, importBatchId: batchId },
+    });
+    res.json({ success: true, data: { deleted: count } });
   } catch (err) {
     next(err);
   }

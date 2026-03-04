@@ -254,6 +254,34 @@ familyRouter.delete('/data', async (req: AuthRequest, res, next) => {
   }
 });
 
+// ── DELETE /api/family/transactions/range — delete transactions in date range ──
+familyRouter.delete('/transactions/range', async (req: AuthRequest, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { role: true } });
+    if (user?.role !== 'owner') throw createError('Solo el propietario puede hacer esto', 403, 'FORBIDDEN');
+
+    const { from, to, txType } = req.body as { from: string; to: string; txType?: string };
+    if (!from || !to) throw createError('Se requieren fechas from y to', 400, 'INVALID_RANGE');
+
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    toDate.setHours(23, 59, 59, 999); // include full last day
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) throw createError('Fechas inválidas', 400, 'INVALID_DATE');
+    if (fromDate > toDate) throw createError('La fecha desde debe ser anterior a la fecha hasta', 400, 'INVALID_RANGE');
+
+    const where: { familyId: string; date: object; type?: string } = {
+      familyId: req.familyId!,
+      date: { gte: fromDate, lte: toDate },
+    };
+    if (txType === 'expense' || txType === 'income') where.type = txType;
+
+    const { count } = await prisma.transaction.deleteMany({ where });
+    res.json({ success: true, data: { deleted: count } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /api/family/join/:token — validate an invitation (no auth needed) ─────
 familyRouter.get('/join/:token', async (_req, res, next) => {
   try {
