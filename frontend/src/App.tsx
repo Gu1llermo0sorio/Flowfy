@@ -8,6 +8,40 @@ import ToastContainer from './components/ui/ToastContainer';
 import XPToastContainer from './components/ui/XPToastContainer';
 import OnboardingWizard from './components/OnboardingWizard';
 
+// ── ErrorBoundary ──────────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-surface-900 flex items-center justify-center p-6">
+          <div className="card p-8 max-w-md w-full text-center space-y-4">
+            <p className="text-4xl">💥</p>
+            <h2 className="text-xl font-bold text-white">Algo salió mal</h2>
+            <p className="text-surface-400 text-sm">{this.state.error?.message ?? 'Error inesperado'}</p>
+            <button
+              onClick={() => { this.setState({ hasError: false, error: null }); window.location.href = '/'; }}
+              className="btn-primary mx-auto"
+            >
+              Volver al inicio
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Lazy-loaded pages
 const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'));
 const RegisterPage = React.lazy(() => import('./pages/auth/RegisterPage'));
@@ -105,6 +139,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <ThemeProvider>
@@ -137,5 +172,6 @@ export default function App() {
         </ThemeProvider>
       </BrowserRouter>
     </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

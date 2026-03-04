@@ -291,7 +291,8 @@ function detectInstitution(text: string): string {
 
 function parseMonto(raw: string): number {
   // UY format: 1.234,56 -> 123456 centavos
-  const clean = raw.replace(/\./g, '').replace(',', '.');
+  // Strip leading * (OCA payment lines) and normalize separators
+  const clean = raw.replace(/^\*/, '').replace(/\./g, '').replace(/,/g, '.');
   const val = parseFloat(clean);
   return isNaN(val) ? 0 : Math.round(Math.abs(val) * 100);
 }
@@ -333,7 +334,8 @@ function parseOCAStatement(text: string): ParsedTx[] {
     const nxt = rawLines[i + 1] ?? '';
 
     // Case (a): line ends with 1-3 digits, next line starts with .DDD,DD
-    if (/\d{1,3}\s*$/.test(cur) && /^\s*\.\d{3},\d{1,2}/.test(nxt)) {
+    // Skip joining if the line is a summary/total line to avoid false joins
+    if (/\d{1,3}\s*$/.test(cur) && /^\s*\.\d{3},\d{1,2}/.test(nxt) && !/total|saldo|pago\b/i.test(cur)) {
       lines.push(cur.trimEnd() + nxt.trim());
       i++;
       continue;
@@ -350,18 +352,18 @@ function parseOCAStatement(text: string): ParsedTx[] {
   //      5/11  11  VETERINARIA                                          490,00
   //      6/ 9  11  METRAJE                             3/ 4             330,00
   //     14/11  11  NETFLIX.COM                                           17,99
-  const txRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+\d{1,3}\s{1,4}(.+?)\s{2,}(?:(\d{1,2})\s*\/\s*(\d{1,2})\s+)?([\d.,]+)\s*$/;
+  const txRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+\d{1,3}\s{1,4}(.+?)\s{2,}(?:(\d{1,2})\s*\/\s*(\d{1,2})\s+)?(\*?[\d.,]+)\s*$/;
 
   // Transaction header line where amount is on the NEXT line (case b above).
   // These end with description or installment fraction, no trailing amount.
   const txHeaderOnlyRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+\d{1,3}\s{1,4}(.+?)(?:\s{2,}(\d{1,2})\s*\/\s*(\d{1,2}))?\s*$/;
 
-  // "Amount-only" next line: optional whitespace, then just a number (possibly negative)
-  const AMOUNT_ONLY_LINE = /^\s*(-?[\d.,]+)\s*$/;
+  // "Amount-only" next line: optional whitespace, then just a number (possibly negative or with * prefix)
+  const AMOUNT_ONLY_LINE = /^\s*(-?\*?[\d.,]+)\s*$/;
 
   // Skip noise descriptions
   const SKIP_PATTERNS = [
-    /reducción/i, /comis\./i, /cuota.*participación/i,
+    /reducci[oó]n/i, /comisi?[oó]?n|comis\./i, /cuota.*participaci[oó]n/i,
     /US Dollar/i, /Uruguayan Peso/i, /su\s+pago/i,
   ];
 
@@ -426,12 +428,12 @@ function parseOCAStatement(text: string): ParsedTx[] {
     const usdMatch = USD_LINE.exec(next1) || USD_LINE.exec(next2);
     const uyuMatch = UYU_LINE.exec(next1) || UYU_LINE.exec(next2);
 
-    if (uyuMatch) {
-      amount = parseMonto(uyuMatch[1]);
-      currency = 'UYU';
-    } else if (usdMatch) {
+    if (usdMatch) {
       amount = parseMonto(usdMatch[1]);
       currency = 'USD';
+    } else if (uyuMatch) {
+      amount = parseMonto(uyuMatch[1]);
+      currency = 'UYU';
     }
 
     if (amount <= 0) {

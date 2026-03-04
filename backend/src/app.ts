@@ -59,7 +59,15 @@ app.use('/api/admin', adminRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/recurring', recurringRouter);
 app.use('/api/import', importRouter);
-app.use('/uploads', express.static('uploads', { maxAge: '7d' }));
+// Protect uploads with authentication
+app.use('/uploads', (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    res.status(401).json({ success: false, error: 'No autorizado' });
+    return;
+  }
+  next();
+}, express.static('uploads', { maxAge: '7d' }));
 
 // ── Error handler (must be last) ───────────────────────────────────────────────
 app.use(errorHandler);

@@ -238,7 +238,7 @@ export default function Dashboard() {
       {showEmptyMonthBanner && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-amber-300">No hay movimientos en Marzo 2026</p>
+            <p className="text-sm font-medium text-amber-300">No hay movimientos en {monthLabel1st}</p>
             <p className="text-xs text-amber-400/70 mt-0.5">Tu actividad más reciente está en {lastActiveMonthLabelCap}</p>
           </div>
           <button

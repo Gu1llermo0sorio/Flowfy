@@ -51,6 +51,19 @@ export function useCreateBudget() {
   });
 }
 
+export function useUpdateBudget() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: BudgetPayload & { id: string }) => {
+      const { data } = await apiClient.patch<{ success: boolean; data: Budget }>(`/budgets/${id}`, payload);
+      return data.data;
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['budgets', vars.month, vars.year] });
+    },
+  });
+}
+
 export function useDeleteBudget(month: number, year: number) {
   const qc = useQueryClient();
   return useMutation({

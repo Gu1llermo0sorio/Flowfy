@@ -109,6 +109,72 @@ transactionRouter.get(
   }
 );
 
+
+// ── GET /api/transactions/summary/monthly ─────────────────────────────────────
+// IMPORTANT: Must be registered BEFORE /:id to avoid Express matching 'summary' as :id
+transactionRouter.get('/summary/monthly', async (req: AuthRequest, res, next) => {
+  try {
+    const { year, month } = req.query as { year?: string; month?: string };
+    const now = new Date();
+    const y = year ? parseInt(year) : now.getFullYear();
+    const m = month ? parseInt(month) : now.getMonth() + 1;
+
+    const start = new Date(y, m - 1, 1);
+    const end = new Date(y, m, 0, 23, 59, 59);
+
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        familyId: req.familyId,
+        date: { gte: start, lte: end },
+      },
+      select: {
+        type: true,
+        amountUYU: true,
+        categoryId: true,
+        category: { select: { nameEs: true, icon: true, color: true } },
+      },
+    });
+
+    const income = transactions
+      .filter((t) => t.type === 'income')
+      .reduce((sum, t) => sum + t.amountUYU, 0);
+    const expenses = transactions
+      .filter((t) => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amountUYU, 0);
+
+    const byCategory: Record<string, { amount: number; name: string; icon: string; color: string }> =
+      {};
+    for (const t of transactions.filter((t) => t.type === 'expense')) {
+      if (!byCategory[t.categoryId]) {
+        byCategory[t.categoryId] = {
+          amount: 0,
+          name: t.category.nameEs,
+          icon: t.category.icon,
+          color: t.category.color,
+        };
+      }
+      byCategory[t.categoryId].amount += t.amountUYU;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        year: y,
+        month: m,
+        income,
+        expenses,
+        savings: income - expenses,
+        savingsRate: income > 0 ? Math.round(((income - expenses) / income) * 100) : 0,
+        byCategory: Object.entries(byCategory)
+          .map(([id, v]) => ({ categoryId: id, ...v }))
+          .sort((a, b) => b.amount - a.amount),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /api/transactions/:id ──────────────────────────────────────────────────
 transactionRouter.get('/:id', async (req: AuthRequest, res, next) => {
   try {
@@ -244,70 +310,6 @@ transactionRouter.delete('/:id', async (req: AuthRequest, res, next) => {
 
     await prisma.transaction.delete({ where: { id: req.params['id'] } });
     res.json({ success: true, message: 'Transacción eliminada exitosamente' });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ── GET /api/transactions/summary/monthly ─────────────────────────────────────
-transactionRouter.get('/summary/monthly', async (req: AuthRequest, res, next) => {
-  try {
-    const { year, month } = req.query as { year?: string; month?: string };
-    const now = new Date();
-    const y = year ? parseInt(year) : now.getFullYear();
-    const m = month ? parseInt(month) : now.getMonth() + 1;
-
-    const start = new Date(y, m - 1, 1);
-    const end = new Date(y, m, 0, 23, 59, 59);
-
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        familyId: req.familyId,
-        date: { gte: start, lte: end },
-      },
-      select: {
-        type: true,
-        amountUYU: true,
-        categoryId: true,
-        category: { select: { nameEs: true, icon: true, color: true } },
-      },
-    });
-
-    const income = transactions
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amountUYU, 0);
-    const expenses = transactions
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amountUYU, 0);
-
-    const byCategory: Record<string, { amount: number; name: string; icon: string; color: string }> =
-      {};
-    for (const t of transactions.filter((t) => t.type === 'expense')) {
-      if (!byCategory[t.categoryId]) {
-        byCategory[t.categoryId] = {
-          amount: 0,
-          name: t.category.nameEs,
-          icon: t.category.icon,
-          color: t.category.color,
-        };
-      }
-      byCategory[t.categoryId].amount += t.amountUYU;
-    }
-
-    res.json({
-      success: true,
-      data: {
-        year: y,
-        month: m,
-        income,
-        expenses,
-        savings: income - expenses,
-        savingsRate: income > 0 ? Math.round(((income - expenses) / income) * 100) : 0,
-        byCategory: Object.entries(byCategory)
-          .map(([id, v]) => ({ categoryId: id, ...v }))
-          .sort((a, b) => b.amount - a.amount),
-      },
-    });
   } catch (err) {
     next(err);
   }

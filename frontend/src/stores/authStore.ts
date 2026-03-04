@@ -124,6 +124,7 @@ export const useAuthStore = create<AuthStore>()(
           // ignore errors — always clear local state
         }
         localStorage.removeItem('refreshToken');
+        localStorage.removeItem('accessToken');
         get().reset();
       },
 

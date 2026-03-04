@@ -100,10 +100,16 @@ adminRouter.patch('/users/:id', async (req: AuthRequest, res, next) => {
       throw createError('No podés modificar tu propio rol', 400, 'BAD_REQUEST');
     }
 
+    const VALID_ROLES = ['owner', 'partner', 'ADMIN', 'banned'];
     const allowed = ['role', 'name'];
     const data: Record<string, unknown> = {};
     for (const k of allowed) {
-      if (req.body[k] !== undefined) data[k] = req.body[k];
+      if (req.body[k] !== undefined) {
+        if (k === 'role' && !VALID_ROLES.includes(req.body[k])) {
+          throw createError(`Rol inválido. Roles permitidos: ${VALID_ROLES.join(', ')}`, 400, 'VALIDATION_ERROR');
+        }
+        data[k] = req.body[k];
+      }
     }
 
     const user = await prisma.user.update({

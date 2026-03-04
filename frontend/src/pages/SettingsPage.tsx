@@ -116,7 +116,7 @@ export default function SettingsPage() {
       const { data } = await apiClient.get('/transactions?limit=10000');
       const rows = [
         ['Fecha', 'Tipo', 'Descripción', 'Categoría', 'Monto', 'Moneda', 'Método'],
-        ...(data?.data?.transactions ?? []).map((t: Record<string, unknown>) => [
+        ...(data?.data ?? []).map((t: Record<string, unknown>) => [
           t.date,
           t.type,
           t.description,

@@ -313,6 +313,42 @@ authRouter.patch('/profile', authenticate, validate(updateAuthProfileSchema), as
   }
 });
 
+// ── DELETE /api/auth/account — permanently delete user account ─────────────────
+authRouter.delete('/account', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.userId!;
+    const familyId = req.familyId!;
+
+    // Revoke all refresh tokens
+    await prisma.refreshToken.deleteMany({ where: { userId } });
+
+    // Delete user's transactions
+    await prisma.transaction.deleteMany({ where: { userId } });
+
+    // Delete user's budgets
+    await prisma.budget.deleteMany({ where: { userId } });
+
+    // Delete user's goals
+    await prisma.goal.deleteMany({ where: { userId } });
+
+    // Delete notifications
+    await prisma.notification.deleteMany({ where: { userId } });
+
+    // Delete user
+    await prisma.user.delete({ where: { id: userId } });
+
+    // If no more users in family, clean up family
+    const remainingMembers = await prisma.user.count({ where: { familyId } });
+    if (remainingMembers === 0) {
+      await prisma.family.delete({ where: { id: familyId } }).catch(() => {});
+    }
+
+    res.json({ success: true, message: 'Cuenta eliminada exitosamente' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── POST /api/auth/add-partner ─────────────────────────────────────────────────
 authRouter.post(
   '/add-partner',

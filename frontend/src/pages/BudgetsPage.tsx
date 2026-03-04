@@ -4,7 +4,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Pencil, X, Plus, PieChart } from 'lucide-react';
-import { useBudgets, useCategories, useCreateBudget, useDeleteBudget, useCreateCategory } from '../hooks/useBudgets';
+import { useBudgets, useCategories, useCreateBudget, useUpdateBudget, useDeleteBudget, useCreateCategory } from '../hooks/useBudgets';
 import { formatCurrency, getBudgetColor, amountToCentavos, centavosToAmount } from '../lib/formatters';
 import type { Budget, Currency } from '../types';
 
@@ -189,6 +189,7 @@ function NewCategoryModal({ onClose, onCreated }: { onClose: () => void; onCreat
 function BudgetModal({ month, year, editing, onClose }: { month: number; year: number; editing?: Budget; onClose: () => void }) {
   const { data: categories = [], isLoading: loadingCats } = useCategories();
   const createBudget = useCreateBudget();
+  const updateBudget = useUpdateBudget();
   const [showNewCategory, setShowNewCategory] = useState(false);
 
   const { register, handleSubmit, control, setValue, watch, formState: { errors, isSubmitting } } = useForm<BudgetFormData>({
@@ -209,13 +210,18 @@ function BudgetModal({ month, year, editing, onClose }: { month: number; year: n
 
   const onSubmit = async (data: BudgetFormData) => {
     const amount = parseFormattedAmount(data.amountRaw);
-    await createBudget.mutateAsync({
+    const payload = {
       categoryId: data.categoryId,
       amount: amountToCentavos(amount),
       currency: data.currency as Currency,
       month, year,
       rollover: data.rollover,
-    });
+    };
+    if (editing) {
+      await updateBudget.mutateAsync({ id: editing.id, ...payload });
+    } else {
+      await createBudget.mutateAsync(payload);
+    }
     onClose();
   };
 
@@ -283,8 +289,8 @@ function BudgetModal({ month, year, editing, onClose }: { month: number; year: n
               <span className="text-sm text-surface-300">Acumular saldo restante al próximo mes</span>
             </label>
 
-            <button type="submit" disabled={isSubmitting || createBudget.isPending} className="btn-primary w-full">
-              {isSubmitting || createBudget.isPending ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear presupuesto'}
+            <button type="submit" disabled={isSubmitting || createBudget.isPending || updateBudget.isPending} className="btn-primary w-full">
+              {isSubmitting || createBudget.isPending || updateBudget.isPending ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear presupuesto'}
             </button>
           </form>
         </motion.div>
