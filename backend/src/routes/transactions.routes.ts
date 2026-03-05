@@ -131,7 +131,10 @@ transactionRouter.get('/summary/monthly', async (req: AuthRequest, res, next) =>
         type: true,
         amountUYU: true,
         categoryId: true,
+        subcategoryId: true,
+        paymentMethod: true,
         category: { select: { nameEs: true, icon: true, color: true } },
+        subcategory: { select: { nameEs: true, icon: true } },
       },
     });
 
@@ -142,8 +145,11 @@ transactionRouter.get('/summary/monthly', async (req: AuthRequest, res, next) =>
       .filter((t) => t.type === 'expense')
       .reduce((sum, t) => sum + t.amountUYU, 0);
 
-    const byCategory: Record<string, { amount: number; name: string; icon: string; color: string }> =
-      {};
+    // ── Group expenses by category (with nested subcategories) ──
+    const byCategory: Record<string, {
+      amount: number; name: string; icon: string; color: string;
+      subcategories: Record<string, { amount: number; name: string; icon: string }>;
+    }> = {};
     for (const t of transactions.filter((t) => t.type === 'expense')) {
       if (!byCategory[t.categoryId]) {
         byCategory[t.categoryId] = {
@@ -151,9 +157,40 @@ transactionRouter.get('/summary/monthly', async (req: AuthRequest, res, next) =>
           name: t.category.nameEs,
           icon: t.category.icon,
           color: t.category.color,
+          subcategories: {},
         };
       }
       byCategory[t.categoryId].amount += t.amountUYU;
+
+      // Track subcategory breakdown
+      if (t.subcategoryId && t.subcategory) {
+        if (!byCategory[t.categoryId].subcategories[t.subcategoryId]) {
+          byCategory[t.categoryId].subcategories[t.subcategoryId] = {
+            amount: 0,
+            name: t.subcategory.nameEs,
+            icon: t.subcategory.icon ?? '',
+          };
+        }
+        byCategory[t.categoryId].subcategories[t.subcategoryId].amount += t.amountUYU;
+      }
+    }
+
+    // ── Group expenses by payment method ──
+    const PAYMENT_LABELS: Record<string, string> = {
+      cash: 'Efectivo', debit: 'Débito', credit: 'Crédito',
+      transfer: 'Transferencia', other: 'Otro',
+    };
+    const PAYMENT_ICONS: Record<string, string> = {
+      cash: '💵', debit: '💳', credit: '💳', transfer: '🏦', other: '📎',
+    };
+    const PAYMENT_COLORS: Record<string, string> = {
+      cash: '#10b981', debit: '#6366f1', credit: '#f43f5e',
+      transfer: '#0ea5e9', other: '#94a3b8',
+    };
+    const byPaymentMethodMap: Record<string, number> = {};
+    for (const t of transactions.filter((t) => t.type === 'expense')) {
+      const pm = t.paymentMethod || 'other';
+      byPaymentMethodMap[pm] = (byPaymentMethodMap[pm] || 0) + t.amountUYU;
     }
 
     res.json({
@@ -166,7 +203,25 @@ transactionRouter.get('/summary/monthly', async (req: AuthRequest, res, next) =>
         savings: income - expenses,
         savingsRate: income > 0 ? Math.round(((income - expenses) / income) * 100) : 0,
         byCategory: Object.entries(byCategory)
-          .map(([id, v]) => ({ categoryId: id, ...v }))
+          .map(([id, v]) => ({
+            categoryId: id,
+            amount: v.amount,
+            name: v.name,
+            icon: v.icon,
+            color: v.color,
+            subcategories: Object.entries(v.subcategories)
+              .map(([subId, sv]) => ({ subcategoryId: subId, ...sv }))
+              .sort((a, b) => b.amount - a.amount),
+          }))
+          .sort((a, b) => b.amount - a.amount),
+        byPaymentMethod: Object.entries(byPaymentMethodMap)
+          .map(([method, amount]) => ({
+            method,
+            label: PAYMENT_LABELS[method] || method,
+            icon: PAYMENT_ICONS[method] || '📎',
+            color: PAYMENT_COLORS[method] || '#94a3b8',
+            amount,
+          }))
           .sort((a, b) => b.amount - a.amount),
       },
     });

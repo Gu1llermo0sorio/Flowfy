@@ -167,6 +167,19 @@ export interface MonthlySummary {
     name: string;
     icon: string;
     color: string;
+    subcategories: Array<{
+      subcategoryId: string;
+      amount: number;
+      name: string;
+      icon: string;
+    }>;
+  }>;
+  byPaymentMethod: Array<{
+    method: string;
+    label: string;
+    icon: string;
+    color: string;
+    amount: number;
   }>;
 }
 

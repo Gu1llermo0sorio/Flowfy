@@ -133,3 +133,66 @@ categoryRouter.post(
     }
   }
 );
+
+// PATCH /api/categories/:id/subcategories/:subId — edit subcategory
+categoryRouter.patch(
+  '/:id/subcategories/:subId',
+  validate(createSubcategorySchema.partial()),
+  async (req: AuthRequest, res, next) => {
+    try {
+      const category = await prisma.category.findFirst({
+        where: {
+          id: req.params.id,
+          OR: [{ familyId: req.familyId }, { familyId: null }],
+        },
+      });
+      if (!category) throw createError('Categoría no encontrada', 404, 'NOT_FOUND');
+
+      const subcategory = await prisma.subcategory.findFirst({
+        where: { id: req.params.subId, categoryId: req.params.id },
+      });
+      if (!subcategory) throw createError('Subcategoría no encontrada', 404, 'NOT_FOUND');
+
+      const updated = await prisma.subcategory.update({
+        where: { id: req.params.subId },
+        data: req.body,
+      });
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// DELETE /api/categories/:id/subcategories/:subId — delete subcategory
+categoryRouter.delete('/:id/subcategories/:subId', async (req: AuthRequest, res, next) => {
+  try {
+    const category = await prisma.category.findFirst({
+      where: {
+        id: req.params.id,
+        OR: [{ familyId: req.familyId }, { familyId: null }],
+      },
+    });
+    if (!category) throw createError('Categoría no encontrada', 404, 'NOT_FOUND');
+
+    const subcategory = await prisma.subcategory.findFirst({
+      where: { id: req.params.subId, categoryId: req.params.id },
+    });
+    if (!subcategory) throw createError('Subcategoría no encontrada', 404, 'NOT_FOUND');
+
+    // Check if subcategory has transactions
+    const txCount = await prisma.transaction.count({ where: { subcategoryId: req.params.subId } });
+    if (txCount > 0) {
+      throw createError(
+        `No se puede eliminar: hay ${txCount} transacciones usando esta subcategoría`,
+        400,
+        'SUBCATEGORY_IN_USE'
+      );
+    }
+
+    await prisma.subcategory.delete({ where: { id: req.params.subId } });
+    res.json({ success: true, message: 'Subcategoría eliminada' });
+  } catch (err) {
+    next(err);
+  }
+});

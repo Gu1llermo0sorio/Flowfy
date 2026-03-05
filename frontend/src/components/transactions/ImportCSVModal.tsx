@@ -211,6 +211,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
       addToast({ type: 'error', message: `${rowsWithoutCategory.length} transacción(es) sin categoría — seleccioná una por defecto` }); return;
     }
     setLoading(true);
+    addToast({ type: 'info', message: 'Procesando importación...' });
     try {
       const { data } = await apiClient.post<{ success: boolean; data: { imported: number; skipped: number; batchId: string } }>('/import/pdf-confirm', {
         rows: rowsToImport.map((r) => ({ ...r, isRecurring: r.isRecurring ?? false, cardCode: r.cardCode })),
@@ -229,6 +230,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
       qc.invalidateQueries({ queryKey: ['import-batches'] });
       qc.invalidateQueries({ queryKey: ['installments-liberation'] });
       qc.invalidateQueries({ queryKey: ['installments-projection'] });
+      addToast({ type: 'success', message: `Importación completada: ${data.data.imported} transacciones importadas` });
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
       addToast({ type: 'error', message: err.response?.data?.message ?? 'Error al importar' });
