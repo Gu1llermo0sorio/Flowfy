@@ -26,8 +26,52 @@ interface Category {
 }
 
 // ── Emoji quick-pick ───────────────────────────────────────────────────────────
-const EMOJI_OPTIONS = ['🛒','🍔','🚗','🏠','💊','🎓','✈️','🎮','👕','💄','🐾','⚽','📚','🎵','☕','🍕','🔧','🏋️','💡','🌿','🎁','❤️','💼','📱','🏦'];
-const COLOR_OPTIONS = ['#14b8a6','#6366f1','#f59e0b','#f43f5e','#10b981','#8b5cf6','#ec4899','#0ea5e9','#f97316','#84cc16','#06b6d4','#a855f7'];
+const EMOJI_GROUPS = [
+  {
+    label: 'Comida y bebida',
+    emojis: ['🍔','🍕','🌮','🍜','🍝','🍣','🥗','🥩','🍗','🥞','🍳','🥐','🥖','🧁','🍰','🍦','🍷','🍺','☕','🧃','🥤','🧋','🍵','🥂','🍾'],
+  },
+  {
+    label: 'Hogar y servicios',
+    emojis: ['🏠','🏡','🛋️','🪑','🛏️','🪴','🪟','🚿','🛁','🪥','🧴','🧹','🧺','💡','🔌','🔧','🪛','🔑','🗝️','🚪','📦','🧯','🌡️','🪣','🛒'],
+  },
+  {
+    label: 'Transporte',
+    emojis: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','✈️','🚂','🚢','🛵','🏍️','🚲','🛴','🛺','⛽','🅿️','🚦','🗺️'],
+  },
+  {
+    label: 'Salud y bienestar',
+    emojis: ['💊','🏥','🩺','🩹','💉','🩸','🦷','👁️','💆','💪','🧘','🏃','🧗','🤸','🏋️','🥋','🛌','🌡️','🧬','🫀','🫁','🧠','🦴','🩼','🩻'],
+  },
+  {
+    label: 'Educación y trabajo',
+    emojis: ['📚','🎓','🖊️','📝','🖥️','💻','📱','📃','📊','📈','💼','🏢','👨‍💼','👩‍💼','🧑‍💻','📡','🔬','🔭','📐','📏','🗂️','📋','🗒️','🗃️','📌'],
+  },
+  {
+    label: 'Entretenimiento',
+    emojis: ['🎮','🎬','🎵','🎸','🎹','🎤','🎧','📺','🎭','🎨','✏️','🖌️','📸','🎪','🎡','🎢','🎠','🃏','🎲','🎯','🎹','⚽','🏀','🎾','🏆'],
+  },
+  {
+    label: 'Compras y moda',
+    emojis: ['👗','👕','👖','👔','🧥','🧣','🧤','🧦','👟','👠','👡','👜','👛','💍','💎','👓','🕶️','🎩','👒','🛍️','🪞','🧴','💄','💅','🪮'],
+  },
+  {
+    label: 'Finanzas y dinero',
+    emojis: ['💰','💵','💶','💷','💴','💳','🪙','🏦','📈','📉','💹','🏧','💸','🤑','🧾','🪙','🏷️','🎁','📦','💲','🏦','📊','🔐','🗝️','✅'],
+  },
+  {
+    label: 'Mascotas y naturaleza',
+    emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🦆','🌿','🌱','🌳','🌺','🌸','🌻'],
+  },
+  {
+    label: 'Viajes y lugares',
+    emojis: ['🌍','🌎','🌏','🏖️','🏕️','⛺','🏔️','🗼','🗽','🏰','🏯','🎑','🌃','🌆','🌇','🌉','🏟️','🎠','⛩️','🕌','🏗️','🌁','🌊','🏝️','🛖'],
+  },
+];
+
+const ALL_EMOJIS = EMOJI_GROUPS.flatMap(g => g.emojis);
+
+const COLOR_OPTIONS = ['#14b8a6','#6366f1','#f59e0b','#f43f5e','#10b981','#8b5cf6','#ec4899','#0ea5e9','#f97316','#84cc16','#06b6d4','#a855f7','#64748b','#ef4444','#0d9488','#7c3aed','#db2777'];
 
 // ── Subcategory modal ──────────────────────────────────────────────────────────
 interface SubModalProps {
@@ -41,6 +85,7 @@ function SubcategoryModal({ onClose, categoryId, existing }: SubModalProps) {
   const addToast = useUIStore((s) => s.addToast);
   const [name, setName] = useState(existing?.nameEs ?? '');
   const [icon, setIcon] = useState(existing?.icon ?? '');
+  const [emojiGroup, setEmojiGroup] = useState(0);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -62,6 +107,8 @@ function SubcategoryModal({ onClose, categoryId, existing }: SubModalProps) {
     },
   });
 
+  const groupEmojis = EMOJI_GROUPS[emojiGroup]?.emojis ?? ALL_EMOJIS;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="card w-full max-w-sm p-6 space-y-4">
@@ -74,7 +121,6 @@ function SubcategoryModal({ onClose, categoryId, existing }: SubModalProps) {
           </button>
         </div>
 
-        {/* Nombre */}
         <div>
           <label className="text-xs text-surface-400 mb-1 block">Nombre</label>
           <input
@@ -85,23 +131,40 @@ function SubcategoryModal({ onClose, categoryId, existing }: SubModalProps) {
           />
         </div>
 
-        {/* Emoji (optional) */}
         <div>
           <label className="text-xs text-surface-400 mb-1 block">Ícono (opcional)</label>
-          <div className="grid grid-cols-8 gap-1">
-            {EMOJI_OPTIONS.map((e) => (
+          {/* Group selector */}
+          <div className="flex gap-1 mb-2 overflow-x-auto pb-1">
+            {EMOJI_GROUPS.map((g, i) => (
+              <button
+                key={i}
+                onClick={() => setEmojiGroup(i)}
+                className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 transition-colors ${
+                  emojiGroup === i ? 'bg-primary-500/30 text-primary-300 border border-primary-500/40' : 'bg-surface-800 text-surface-400 border border-surface-700'
+                }`}
+              >{g.label}</button>
+            ))}
+          </div>
+          <div className="grid grid-cols-10 gap-0.5 p-2 bg-surface-800/60 rounded-xl border border-surface-700/50">
+            {groupEmojis.map((e) => (
               <button
                 key={e}
                 onClick={() => setIcon(icon === e ? '' : e)}
-                className={`text-lg p-1 rounded-lg transition-colors hover:bg-surface-700 ${icon === e ? 'bg-surface-700 ring-2 ring-primary-500' : ''}`}
-              >
-                {e}
-              </button>
+                className={`p-1.5 rounded-lg text-base transition-all hover:scale-110 hover:bg-surface-700 ${
+                  icon === e ? 'bg-primary-500/20 ring-1 ring-primary-500/60' : ''
+                }`}
+              >{e}</button>
             ))}
           </div>
+          {icon && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs text-surface-400">Seleccionado:</span>
+              <span className="text-xl">{icon}</span>
+              <button onClick={() => setIcon('')} className="text-xs text-surface-500 hover:text-danger-400">quitar</button>
+            </div>
+          )}
         </div>
 
-        {/* Actions */}
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="btn-secondary flex-1 py-2">Cancelar</button>
           <button
@@ -130,11 +193,11 @@ function CategoryModal({ onClose, existing }: CatModalProps) {
   const [name, setName] = useState(existing?.nameEs ?? existing?.name ?? '');
   const [icon, setIcon] = useState(existing?.icon ?? '🛒');
   const [color, setColor] = useState(existing?.color ?? '#14b8a6');
-  const [type, setType] = useState<'income' | 'expense' | 'both'>(existing?.type ?? 'expense');
+  const [emojiGroup, setEmojiGroup] = useState(0);
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const payload = { name, nameEs: name, icon, color, type };
+      const payload = { name, nameEs: name, icon, color };
       if (existing) {
         const { data } = await apiClient.patch(`/categories/${existing.id}`, payload);
         return data;
@@ -152,9 +215,11 @@ function CategoryModal({ onClose, existing }: CatModalProps) {
     },
   });
 
+  const groupEmojis = EMOJI_GROUPS[emojiGroup]?.emojis ?? ALL_EMOJIS;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="card w-full max-w-sm p-6 space-y-4">
+      <div className="card w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-surface-50">
             {existing ? 'Editar categoría' : 'Nueva categoría'}
@@ -182,36 +247,30 @@ function CategoryModal({ onClose, existing }: CatModalProps) {
           />
         </div>
 
-        {/* Tipo */}
-        <div>
-          <label className="text-xs text-surface-400 mb-1 block">Tipo</label>
-          <div className="flex gap-2">
-            {(['expense', 'income', 'both'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setType(t)}
-                className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${
-                  type === t ? 'border-primary-500 bg-primary-500/20 text-primary-300' : 'border-surface-700 text-surface-400'
-                }`}
-              >
-                {t === 'expense' ? 'Gasto' : t === 'income' ? 'Ingreso' : 'Ambos'}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Emoji */}
         <div>
           <label className="text-xs text-surface-400 mb-1 block">Ícono</label>
-          <div className="grid grid-cols-8 gap-1">
-            {EMOJI_OPTIONS.map((e) => (
+          {/* Group selector */}
+          <div className="flex gap-1 mb-2 overflow-x-auto pb-1">
+            {EMOJI_GROUPS.map((g, i) => (
+              <button
+                key={i}
+                onClick={() => setEmojiGroup(i)}
+                className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 transition-colors ${
+                  emojiGroup === i ? 'bg-primary-500/30 text-primary-300 border border-primary-500/40' : 'bg-surface-800 text-surface-400 border border-surface-700'
+                }`}
+              >{g.label}</button>
+            ))}
+          </div>
+          <div className="grid grid-cols-10 gap-0.5 p-2 bg-surface-800/60 rounded-xl border border-surface-700/50">
+            {groupEmojis.map((e) => (
               <button
                 key={e}
                 onClick={() => setIcon(e)}
-                className={`text-lg p-1 rounded-lg transition-colors hover:bg-surface-700 ${icon === e ? 'bg-surface-700 ring-2 ring-primary-500' : ''}`}
-              >
-                {e}
-              </button>
+                className={`p-1.5 rounded-lg text-base transition-all hover:scale-110 hover:bg-surface-700 ${
+                  icon === e ? 'bg-primary-500/20 ring-1 ring-primary-500/60' : ''
+                }`}
+              >{e}</button>
             ))}
           </div>
         </div>

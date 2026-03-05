@@ -101,6 +101,27 @@ budgetRouter.post('/', validate(budgetSchema), async (req: AuthRequest, res, nex
   }
 });
 
+// PATCH /api/budgets/:id
+budgetRouter.patch('/:id', validate(budgetSchema.partial()), async (req: AuthRequest, res, next) => {
+  try {
+    const budget = await prisma.budget.findFirst({
+      where: { id: req.params['id'], familyId: req.familyId },
+    });
+    if (!budget) throw createError('Presupuesto no encontrado', 404, 'NOT_FOUND');
+
+    const updated = await prisma.budget.update({
+      where: { id: req.params['id'] },
+      data: req.body,
+      include: {
+        category: { select: { id: true, nameEs: true, icon: true, color: true } },
+      },
+    });
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // DELETE /api/budgets/:id
 budgetRouter.delete('/:id', async (req: AuthRequest, res, next) => {
   try {

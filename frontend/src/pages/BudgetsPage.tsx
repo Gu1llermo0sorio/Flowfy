@@ -84,11 +84,49 @@ function BudgetCard({ budget, onDelete, onEdit }: {
   );
 }
 
-const PRESET_ICONS = [
-  '🛒','🍔','🚗','🏠','💊','👕','🎮','✈️','📚','🐾',
-  '🎵','💼','🏋️','🎁','💡','🍷','☕','🧴','🌿','💰',
-  '🏥','🎓','🔧','📱','🐶','🧹','🛁','🏖️','🎭','❤️',
+const EMOJI_GROUPS_BP = [
+  {
+    label: 'Comida',
+    emojis: ['🍔','🍕','🌮','🍜','🍝','🍣','🥗','🍳','🥐','🥖','🧁','🍰','🍦','🍷','🍺','☕','🥂','🧃','🥤','🍵','🍾','🍩','🦜','🍖','🧂'],
+  },
+  {
+    label: 'Hogar',
+    emojis: ['🏠','🏡','🛋️','🪑','🛏️','🪴','🪟','🚿','🧹','🧺','💡','🔌','🔧','🪛','🔑','🗝️','🚪','📦','🌡️','🪣','🛒','🫷','🤺','🧰','🪜'],
+  },
+  {
+    label: 'Transporte',
+    emojis: ['🚗','🚕','🚙','🚌','🏎️','🚓','🚑','🛻','🚚','✈️','🚂','🚢','🛵','🚲','🛴','⛽','🅿️','🙭','🚁','🚟','🖴','😨','😌','🛄','🚧'],
+  },
+  {
+    label: 'Salud',
+    emojis: ['💊','🏥','🩺','🩹','💉','🩸','🦷','💆','💪','🧘','🏃','🧗','🏋️','🥋','🛌','🧬','🫀','🫁','🤥','🤩','🦴','🩼','🩻','🩾','🩿'],
+  },
+  {
+    label: 'Educación',
+    emojis: ['📚','🎓','🖊️','📝','🖥️','💻','📱','📃','💼','🏢','📡','🔬','🔭','📐','📏','🗂️','📋','📌','🥂','🎫','🧠','💡','🎤','📰','📎'],
+  },
+  {
+    label: 'Ocio',
+    emojis: ['🎮','🎬','🎵','🎸','🎹','🎤','🎧','📺','🎭','🎨','📸','🎪','🎡','🎢','🎠','🃏','🎲','🎯','⚽','🏀','🎾','🏆','🤺','🏄','🏔️'],
+  },
+  {
+    label: 'Compras',
+    emojis: ['👗','👕','👖','👔','🧥','🧣','🧤','🧦','👟','👠','👜','👛','💍','💎','👓','🎩','👒','🛍️','🪞','💄','💅','🪮','🧴','🕶️','🎀'],
+  },
+  {
+    label: 'Finanzas',
+    emojis: ['💰','💵','💶','💷','💴','💳','🪙','🏦','📈','📉','💹','🏧','💸','🤑','🧾','🏷️','🎁','📦','💲','😎','✅','🔐','🗝️','🏡','📊'],
+  },
+  {
+    label: 'Mascotas',
+    emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🦆','🌿','🌱','🌳','🌺','🌸','🌻'],
+  },
+  {
+    label: 'Viajes',
+    emojis: ['🌍','🌎','🌏','🏖️','🏕️','⛺','🏔️','🗼','🗽','🏰','🏯','🎑','🌃','🌆','🌇','🌉','🏟️','🌁','🌊','🏝️','🌋','☃️','🌤️','✨','🌠'],
+  },
 ];
+const ALL_EMOJIS_BP = EMOJI_GROUPS_BP.flatMap(g => g.emojis);
 const PRESET_COLORS = [
   '#0d9488','#6366f1','#f59e0b','#ef4444','#10b981',
   '#8b5cf6','#ec4899','#0ea5e9','#f97316','#84cc16',
@@ -103,6 +141,7 @@ function NewCategoryModal({ onClose, onCreated }: { onClose: () => void; onCreat
   });
   const icon = watch('icon');
   const color = watch('color');
+  const [emojiGroupIdx, setEmojiGroupIdx] = useState(0);
 
   const onSubmit = async (data: CategoryFormData) => {
     const cat = await createCategory.mutateAsync({ name: data.name || data.nameEs, nameEs: data.nameEs, icon: data.icon, color: data.color });
@@ -110,9 +149,11 @@ function NewCategoryModal({ onClose, onCreated }: { onClose: () => void; onCreat
     onClose();
   };
 
+  const groupEmojis = EMOJI_GROUPS_BP[emojiGroupIdx]?.emojis ?? ALL_EMOJIS_BP;
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }} className="card w-full max-w-sm p-5 m-4">
+      <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }} className="card w-full max-w-sm p-5 m-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-bold text-white">Nueva categoría</h3>
@@ -142,12 +183,24 @@ function NewCategoryModal({ onClose, onCreated }: { onClose: () => void; onCreat
           {/* Icon picker */}
           <div>
             <label className="text-xs text-surface-400 mb-1.5 block font-medium">Ícono</label>
-            <div className="grid grid-cols-10 gap-1 p-2 rounded-xl bg-surface-800 border border-surface-700">
-              {PRESET_ICONS.map(e => (
+            {/* Group tabs */}
+            <div className="flex gap-1 mb-2 overflow-x-auto pb-1">
+              {EMOJI_GROUPS_BP.map((g, i) => (
+                <button
+                  key={i} type="button"
+                  onClick={() => setEmojiGroupIdx(i)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 transition-colors ${
+                    emojiGroupIdx === i ? 'bg-primary-500/30 text-primary-300 border border-primary-500/40' : 'bg-surface-700 text-surface-400 border border-surface-600'
+                  }`}
+                >{g.label}</button>
+              ))}
+            </div>
+            <div className="grid grid-cols-10 gap-0.5 p-2 rounded-xl bg-surface-800 border border-surface-700">
+              {groupEmojis.map(e => (
                 <button
                   key={e} type="button"
                   onClick={() => setValue('icon', e, { shouldValidate: true })}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-base transition-all hover:scale-110"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-base transition-all hover:scale-110 hover:bg-surface-700"
                   style={icon === e ? { backgroundColor: color + '35', boxShadow: `0 0 0 2px ${color}` } : {}}
                 >
                   {e}

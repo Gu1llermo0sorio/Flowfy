@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, Plus, Unlock, ChevronLeft, ChevronRight, ChevronDown, CreditCard, Repeat, Banknote } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { format, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { apiClient } from '../lib/apiClient';
@@ -146,8 +145,7 @@ function CategoryBreakdown({
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? byCategory : byCategory.slice(0, 10);
-  const topForChart = byCategory.slice(0, 8);
+  const visible = showAll ? byCategory : byCategory.slice(0, 8);
 
   return (
     <div className="card p-5">
@@ -158,118 +156,116 @@ function CategoryBreakdown({
           <p className="text-xs text-surface-500 mt-0.5">{monthLabel} · {byCategory.length} categorías</p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-surface-500">Total gastado</p>
+          <p className="text-xs text-surface-500">Total</p>
           <p className="text-sm font-bold text-rose-400 font-mono">{formatCurrency(totalExpenses)}</p>
         </div>
       </div>
 
-      {/* Top 8 mini bar chart */}
-      {topForChart.length >= 2 && (
-        <div className="h-36 mb-4">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={topForChart.map((c) => ({ name: c.icon + ' ' + c.name, amount: c.amount, color: c.color }))}
-              layout="vertical"
-              margin={{ left: 0, right: 8, top: 0, bottom: 0 }}
-            >
-              <XAxis type="number" hide />
-              <YAxis
-                type="category"
-                dataKey="name"
-                width={110}
-                tick={{ fontSize: 11, fill: '#a1a1aa' }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                formatter={(value: number) => [formatCurrency(value), 'Gasto']}
-                contentStyle={{
-                  background: '#1e1e2e',
-                  border: '1px solid #2e2e3e',
-                  borderRadius: '10px',
-                  color: '#e4e4e7',
-                  fontSize: '12px',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                }}
-              />
-              <Bar dataKey="amount" radius={[0, 6, 6, 0]} barSize={14}>
-                {topForChart.map((entry, index) => (
-                  <Cell key={index} fill={entry.color || `hsl(${(index * 47) % 360}, 60%, 55%)`} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+      {/* Stacked proportion bar — visual overview of all categories */}
+      <div className="flex h-2 rounded-full overflow-hidden mb-5 gap-px">
+        {byCategory.slice(0, 12).map((cat, i) => {
+          const pct = totalExpenses > 0 ? (cat.amount / totalExpenses) * 100 : 0;
+          return (
+            <div
+              key={cat.categoryId ?? i}
+              title={`${cat.name}: ${pct.toFixed(1)}%`}
+              style={{ width: `${pct}%`, backgroundColor: cat.color || `hsl(${(i * 37) % 360}, 65%, 55%)` }}
+            />
+          );
+        })}
+      </div>
 
-      {/* Full category list with expandable subcategories */}
-      <div className="space-y-1">
+      {/* Category rows */}
+      <div className="divide-y divide-surface-800/60">
         {visible.map((cat, index) => {
           const pct = totalExpenses > 0 ? (cat.amount / totalExpenses) * 100 : 0;
-          const color = cat.color || `hsl(${(index * 47) % 360}, 60%, 55%)`;
+          const color = cat.color || `hsl(${(index * 37) % 360}, 65%, 55%)`;
           const hasSubs = cat.subcategories && cat.subcategories.length > 0;
           const isExpanded = expanded === cat.categoryId;
+          const assignedTotal = hasSubs ? cat.subcategories.reduce((s, sub) => s + sub.amount, 0) : cat.amount;
+          const unassigned = cat.amount - assignedTotal;
 
           return (
             <div key={cat.categoryId ?? index}>
+              {/* Main category row */}
               <button
-                className="w-full flex items-center gap-2.5 py-2 px-2 rounded-xl hover:bg-surface-700/30 transition-colors"
-                onClick={() => hasSubs && setExpanded(isExpanded ? null : cat.categoryId)}
+                className="w-full group py-2.5 px-1"
+                onClick={() => setExpanded(isExpanded ? null : cat.categoryId)}
               >
-                {/* Icon bubble */}
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
-                  style={{ backgroundColor: color + '22', border: `1px solid ${color}44` }}
-                >
-                  {cat.icon}
-                </div>
-                {/* Name */}
-                <span className="text-xs font-medium text-surface-200 truncate flex-1 text-left">{cat.name}</span>
-                {/* Pct badge */}
-                <span
-                  className="text-[11px] font-bold font-mono px-1.5 py-0.5 rounded-md flex-shrink-0"
-                  style={{ color, backgroundColor: color + '18' }}
-                >
-                  {pct.toFixed(0)}%
-                </span>
-                {/* Amount */}
-                <span className="text-xs font-mono text-surface-400 flex-shrink-0 w-24 text-right">
-                  {formatCurrency(cat.amount)}
-                </span>
-                {/* Expand indicator */}
-                {hasSubs && (
+                <div className="flex items-center gap-3">
+                  {/* Rank */}
+                  <span className="text-[10px] font-mono text-surface-600 w-4 text-right flex-shrink-0">{index + 1}</span>
+                  {/* Icon */}
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
+                    style={{ backgroundColor: color + '20' }}
+                  >
+                    {cat.icon}
+                  </div>
+                  {/* Name + bar */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-surface-100 truncate">{cat.name}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <span className="text-[11px] font-mono text-surface-400">{formatCurrency(cat.amount)}</span>
+                        <span
+                          className="text-[10px] font-bold font-mono w-8 text-right"
+                          style={{ color }}
+                        >{pct.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-surface-700/50 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
+                      />
+                    </div>
+                  </div>
+                  {/* Chevron */}
                   <ChevronDown
-                    className={`w-3.5 h-3.5 text-surface-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                    className={`w-3.5 h-3.5 transition-transform flex-shrink-0 ${
+                      isExpanded ? 'rotate-180 text-surface-300' : 'text-surface-600 group-hover:text-surface-400'
+                    }`}
                   />
-                )}
+                </div>
               </button>
 
-              {/* Progress bar */}
-              <div className="h-1 rounded-full bg-surface-700/40 overflow-hidden mx-2 ml-12">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${Math.min(pct, 100)}%`, background: `linear-gradient(90deg, ${color}cc, ${color})` }}
-                />
-              </div>
-
-              {/* Subcategories (expanded) */}
-              {isExpanded && hasSubs && (
-                <div className="ml-12 mt-1 mb-2 space-y-1 border-l-2 pl-3" style={{ borderColor: color + '44' }}>
-                  {cat.subcategories.map((sub) => {
-                    const subPct = cat.amount > 0 ? (sub.amount / cat.amount) * 100 : 0;
-                    return (
-                      <div key={sub.subcategoryId} className="flex items-center gap-2 py-1">
-                        <span className="text-xs flex-shrink-0">{sub.icon || '·'}</span>
-                        <span className="text-[11px] text-surface-300 truncate flex-1">{sub.name}</span>
-                        <span className="text-[10px] font-mono text-surface-500 flex-shrink-0">
-                          {subPct.toFixed(0)}%
-                        </span>
-                        <span className="text-[11px] font-mono text-surface-400 flex-shrink-0 w-20 text-right">
-                          {formatCurrency(sub.amount)}
-                        </span>
-                      </div>
-                    );
-                  })}
+              {/* Subcategory drill-down */}
+              {isExpanded && (
+                <div className="pb-2 pl-[52px] space-y-0.5">
+                  {hasSubs ? (
+                    <>
+                      {cat.subcategories.map((sub) => {
+                        const subPct = cat.amount > 0 ? (sub.amount / cat.amount) * 100 : 0;
+                        return (
+                          <div key={sub.subcategoryId} className="flex items-center gap-2 py-1 px-2 rounded-lg hover:bg-surface-800/40">
+                            <span className="text-[13px] w-5 text-center flex-shrink-0">{sub.icon || '·'}</span>
+                            <span className="text-[11px] text-surface-300 truncate flex-1">{sub.name}</span>
+                            <div className="w-16 h-1 rounded-full bg-surface-700/40 overflow-hidden flex-shrink-0">
+                              <div className="h-full rounded-full" style={{ width: `${Math.min(subPct, 100)}%`, backgroundColor: color + 'bb' }} />
+                            </div>
+                            <span className="text-[10px] font-mono text-surface-500 w-6 text-right flex-shrink-0">{subPct.toFixed(0)}%</span>
+                            <span className="text-[11px] font-mono text-surface-400 w-20 text-right flex-shrink-0">{formatCurrency(sub.amount)}</span>
+                          </div>
+                        );
+                      })}
+                      {unassigned > 0 && (
+                        <div className="flex items-center gap-2 py-1 px-2 rounded-lg">
+                          <span className="text-[13px] w-5 text-center flex-shrink-0 text-surface-600">···</span>
+                          <span className="text-[11px] text-surface-500 italic truncate flex-1">Sin asignar</span>
+                          <div className="w-16 h-1 rounded-full bg-surface-700/40 overflow-hidden flex-shrink-0">
+                            <div className="h-full rounded-full" style={{ width: `${Math.min((unassigned / cat.amount) * 100, 100)}%`, backgroundColor: '#52525b' }} />
+                          </div>
+                          <span className="text-[10px] font-mono text-surface-600 w-6 text-right flex-shrink-0">{((unassigned / cat.amount) * 100).toFixed(0)}%</span>
+                          <span className="text-[11px] font-mono text-surface-600 w-20 text-right flex-shrink-0">{formatCurrency(unassigned)}</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="py-2 px-2">
+                      <p className="text-[11px] text-surface-500 italic">Sin subcategorías asignadas</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -277,13 +273,13 @@ function CategoryBreakdown({
         })}
       </div>
 
-      {/* Show more / less button */}
-      {byCategory.length > 10 && (
+      {/* Show more / less */}
+      {byCategory.length > 8 && (
         <button
           onClick={() => setShowAll(!showAll)}
-          className="w-full mt-2 py-2 text-xs text-primary-400 hover:text-primary-300 transition-colors text-center"
+          className="w-full mt-3 pt-3 border-t border-surface-800/60 text-xs text-primary-400 hover:text-primary-300 transition-colors text-center"
         >
-          {showAll ? 'Mostrar menos' : `Ver las ${byCategory.length - 10} categorías restantes`}
+          {showAll ? 'Mostrar menos' : `Ver ${byCategory.length - 8} categorías más`}
         </button>
       )}
     </div>
