@@ -127,6 +127,7 @@ model Transaction {
   ocaTotalAmount        Int?
   ocaTotalInstallments  Int?
   ocaCurrentInstallment Int?
+  ocaCardCode           String?  // card code from OCA statement (e.g. "11", "29", "45")
   linkedTransactionId   String?  // links Itaú OCA payment to OCA statement
   aiCategoryConfidence  Int?     // 0–100 confidence score from Claude
   needsReview           Boolean  @default(false)
@@ -145,6 +146,7 @@ model Transaction {
   @@index([date])
   @@index([recurringId])
   @@index([importBatchId])
+  @@index([ocaCardCode])
 }
 
 model RecurringTransaction {
@@ -351,6 +353,19 @@ model ImportedDocument {
 
   @@index([userId])
   @@index([status])
+}
+
+model CardAlias {
+  id          String   @id @default(cuid())
+  familyId    String
+  institution String   // "oca" | "brou" etc.
+  cardCode    String   // e.g. "11", "29", "45"
+  aliasName   String   // user-defined name, e.g. "Guillermo", "Mamá"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([familyId, institution, cardCode])
+  @@index([familyId])
 }
 
 model FamilyInvitation {

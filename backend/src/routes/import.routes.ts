@@ -209,6 +209,7 @@ interface ParsedTx {
   categoryId: string | null;    // resolved after DB lookup
   subcategoryId?: string | null; // resolved from learned history
   possibleDuplicate?: boolean;  // true when similar tx already exists in DB
+  cardCode: string | null;      // card code from statement (e.g. "11", "29", "45")
 }
 
 // Map merchant keywords → category nameEs
@@ -352,11 +353,11 @@ function parseOCAStatement(text: string): ParsedTx[] {
   //      5/11  11  VETERINARIA                                          490,00
   //      6/ 9  11  METRAJE                             3/ 4             330,00
   //     14/11  11  NETFLIX.COM                                           17,99
-  const txRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+\d{1,3}\s{1,4}(.+?)\s{2,}(?:(\d{1,2})\s*\/\s*(\d{1,2})\s+)?(\*?[\d.,]+)\s*$/;
+  const txRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+(\d{1,3})\s{1,4}(.+?)\s{2,}(?:(\d{1,2})\s*\/\s*(\d{1,2})\s+)?(\*?[\d.,]+)\s*$/;
 
   // Transaction header line where amount is on the NEXT line (case b above).
   // These end with description or installment fraction, no trailing amount.
-  const txHeaderOnlyRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+\d{1,3}\s{1,4}(.+?)(?:\s{2,}(\d{1,2})\s*\/\s*(\d{1,2}))?\s*$/;
+  const txHeaderOnlyRegex = /^\s{2,}(\d{1,2})\s*\/\s*(\d{1,2})\s+(\d{1,3})\s{1,4}(.+?)(?:\s{2,}(\d{1,2})\s*\/\s*(\d{1,2}))?\s*$/;
 
   // "Amount-only" next line: optional whitespace, then just a number (possibly negative or with * prefix)
   const AMOUNT_ONLY_LINE = /^\s*(-?\*?[\d.,]+)\s*$/;
@@ -374,13 +375,14 @@ function parseOCAStatement(text: string): ParsedTx[] {
     const line = lines[i];
 
     let dayStr!: string, monthStr!: string, rawDesc!: string;
+    let cardCodeStr: string | undefined;
     let instCurStr: string | undefined, instTotStr: string | undefined;
     let rawAmount!: string;
     let amountFromNextLine = false;
 
     const match = txRegex.exec(line);
     if (match) {
-      [, dayStr, monthStr, rawDesc, instCurStr, instTotStr, rawAmount] = match;
+      [, dayStr, monthStr, cardCodeStr, rawDesc, instCurStr, instTotStr, rawAmount] = match;
     } else {
       // Try header-only match: amount expected on next line (case b)
       const hMatch = txHeaderOnlyRegex.exec(line);
@@ -391,7 +393,7 @@ function parseOCAStatement(text: string): ParsedTx[] {
       // Skip if no amount line found, or amount is negative (discount / payment)
       if (!amtMatch || amtMatch[1].startsWith('-')) continue;
 
-      [, dayStr, monthStr, rawDesc, instCurStr, instTotStr] = hMatch;
+      [, dayStr, monthStr, cardCodeStr, rawDesc, instCurStr, instTotStr] = hMatch;
       rawAmount = amtMatch[1];
       amountFromNextLine = true;
     }
@@ -453,6 +455,7 @@ function parseOCAStatement(text: string): ParsedTx[] {
       keep: true,
       categoryHint: guessMerchantCategory(description),
       categoryId: null,
+      cardCode: cardCodeStr ?? null,
     });
 
     // Advance past the amount-only continuation line
@@ -482,6 +485,7 @@ function parseOCAStatement(text: string): ParsedTx[] {
       keep: true,
       categoryHint: 'Finanzas',
       categoryId: null,
+      cardCode: null,
     });
   }
 
@@ -586,7 +590,8 @@ importRouter.post('/pdf-preview', pdfUpload.single('file'), async (req: AuthRequ
       const institution = resolvedRows[0]?.institution || detectInstitution(text);
 
       // ── Duplicate detection ────────────────────────────────────────────────
-      // Check which parsed rows may already exist in the DB (same amount + date ±2 days)
+      // Match by normalized description + amount + date ±2 days
+      // For installments: same description, same total installments, same cuota = duplicate
       let finalRows: typeof resolvedRows = resolvedRows;
       if (resolvedRows.length > 0) {
         const rowDates = resolvedRows.map((r) => new Date(r.date).getTime()).filter((t) => !isNaN(t));
@@ -594,21 +599,43 @@ importRouter.post('/pdf-preview', pdfUpload.single('file'), async (req: AuthRequ
           const minDate = new Date(Math.min(...rowDates) - 3 * 86400000);
           const maxDate = new Date(Math.max(...rowDates) + 3 * 86400000);
           const existing = await prisma.transaction.findMany({
-            where: { familyId: req.familyId!, date: { gte: minDate, lte: maxDate } },
-            select: { amount: true, date: true },
+            where: { familyId: req.familyId!, date: { gte: minDate, lte: maxDate }, importSource: 'pdf' },
+            select: { amount: true, date: true, description: true, ocaCurrentInstallment: true, ocaTotalInstallments: true },
           });
           finalRows = resolvedRows.map((row) => {
             const rowDate = new Date(row.date).getTime();
+            const rowDescNorm = normalizeDesc(row.description);
             const isDupe = existing.some((ex) => {
               const diff = Math.abs(ex.date.getTime() - rowDate);
-              return ex.amount === row.amount && diff <= 2 * 86400000;
+              if (diff > 2 * 86400000) return false;
+              if (ex.amount !== row.amount) return false;
+              // Compare normalized descriptions
+              const exDescNorm = normalizeDesc(ex.description);
+              if (rowDescNorm !== exDescNorm) return false;
+              // For installments: must match installment number exactly
+              if (row.installmentTotal && row.installmentTotal > 1) {
+                return ex.ocaTotalInstallments === row.installmentTotal &&
+                  ex.ocaCurrentInstallment === row.installmentCurrent;
+              }
+              return true;
             });
             return isDupe ? { ...row, possibleDuplicate: true } : row;
           });
         }
       }
 
-      res.json({ success: true, data: { rows: finalRows, totalRows: finalRows.length, institution, parsedBy: 'regex', statementTotal } });
+      // ── Card aliases: look up existing aliases for the found card codes ──
+      const distinctCardCodes = [...new Set(finalRows.map((r) => r.cardCode).filter(Boolean))] as string[];
+      let cardAliases: Array<{ cardCode: string; aliasName: string }> = [];
+      if (distinctCardCodes.length > 0) {
+        const aliases = await prisma.cardAlias.findMany({
+          where: { familyId: req.familyId!, institution, cardCode: { in: distinctCardCodes } },
+          select: { cardCode: true, aliasName: true },
+        });
+        cardAliases = aliases;
+      }
+
+      res.json({ success: true, data: { rows: finalRows, totalRows: finalRows.length, institution, parsedBy: 'regex', statementTotal, cardCodes: distinctCardCodes, cardAliases } });
       return;
     }
 
@@ -674,6 +701,7 @@ Responde SOLO con el JSON array.`,
         keep: true,
         categoryHint: guessMerchantCategory(t.description),
         categoryId: null,
+        cardCode: null,
       }));
 
     const institution = rows[0]?.institution || 'credit_card';
@@ -687,7 +715,7 @@ Responde SOLO con el JSON array.`,
 // ── POST /api/import/pdf-confirm — import PDF-parsed rows ────────────────────
 importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
   try {
-    const { rows, defaultCategoryId } = req.body as {
+    const { rows, defaultCategoryId, cardAliases } = req.body as {
       rows: Array<{
         date: string;
         description: string;
@@ -700,8 +728,10 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
         installmentTotal?: number | null;
         institution?: string;
         isRecurring?: boolean;
+        cardCode?: string | null;
       }>;
       defaultCategoryId: string;
+      cardAliases?: Array<{ cardCode: string; aliasName: string; institution: string }>;
     };
 
     if (!rows?.length) throw createError('No hay filas para importar', 400, 'NO_ROWS');
@@ -750,6 +780,7 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
             isOcaInstallment: (r.installmentTotal ?? 0) > 1,
             ocaCurrentInstallment: r.installmentCurrent ?? null,
             ocaTotalInstallments: r.installmentTotal ?? null,
+            ocaCardCode: r.cardCode ?? null,
           };
         }),
         skipDuplicates: true,
@@ -757,6 +788,29 @@ importRouter.post('/pdf-confirm', async (req: AuthRequest, res, next) => {
 
       imported += toCreate.length;
       skipped += chunk.length - toCreate.length;
+    }
+
+    // ── Upsert card aliases if provided ──────────────────────────────────────
+    if (cardAliases && cardAliases.length > 0) {
+      for (const alias of cardAliases) {
+        if (!alias.cardCode || !alias.aliasName || !alias.institution) continue;
+        await prisma.cardAlias.upsert({
+          where: {
+            familyId_institution_cardCode: {
+              familyId: req.familyId!,
+              institution: alias.institution,
+              cardCode: alias.cardCode,
+            },
+          },
+          create: {
+            familyId: req.familyId!,
+            institution: alias.institution,
+            cardCode: alias.cardCode,
+            aliasName: alias.aliasName,
+          },
+          update: { aliasName: alias.aliasName },
+        });
+      }
     }
 
     res.json({ success: true, data: { imported, skipped, batchId: importBatchId } });
@@ -970,6 +1024,52 @@ importRouter.delete('/batch/:batchId', async (req: AuthRequest, res, next) => {
       where: { familyId: req.familyId!, importBatchId: batchId },
     });
     res.json({ success: true, data: { deleted: count } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/import/card-aliases — list aliases for this family ──────────────
+importRouter.get('/card-aliases', async (req: AuthRequest, res, next) => {
+  try {
+    const aliases = await prisma.cardAlias.findMany({
+      where: { familyId: req.familyId! },
+      orderBy: { cardCode: 'asc' },
+    });
+    res.json({ success: true, data: aliases });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/import/card-aliases — create or update a card alias ────────────
+importRouter.post('/card-aliases', async (req: AuthRequest, res, next) => {
+  try {
+    const { cardCode, aliasName, institution } = req.body as {
+      cardCode: string;
+      aliasName: string;
+      institution: string;
+    };
+    if (!cardCode || !aliasName || !institution) {
+      throw createError('cardCode, aliasName e institution son requeridos', 400, 'MISSING_PARAMS');
+    }
+    const alias = await prisma.cardAlias.upsert({
+      where: {
+        familyId_institution_cardCode: {
+          familyId: req.familyId!,
+          institution,
+          cardCode,
+        },
+      },
+      create: {
+        familyId: req.familyId!,
+        institution,
+        cardCode,
+        aliasName,
+      },
+      update: { aliasName },
+    });
+    res.json({ success: true, data: alias });
   } catch (err) {
     next(err);
   }

@@ -38,6 +38,7 @@ interface PdfRow {
   categoryHint: string | null;  // nameEs of auto-detected category
   possibleDuplicate?: boolean;  // true = ya existe una tx similar en la BD
   isRecurring?: boolean;        // marcar como recurrente
+  cardCode: string | null;      // card code from statement
 }
 
 interface PdfPreviewResult {
@@ -45,6 +46,8 @@ interface PdfPreviewResult {
   totalRows: number;
   institution: string;
   statementTotal: number | null;
+  cardCodes?: string[];
+  cardAliases?: Array<{ cardCode: string; aliasName: string }>;
 }
 
 interface ImportCSVModalProps {
@@ -88,6 +91,8 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   const [pdfRows, setPdfRows] = useState<PdfRow[]>([]);
   const [importBatchId, setImportBatchId] = useState<string | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
+  // Card alias naming: cardCode → aliasName (editable by user)
+  const [cardAliasMap, setCardAliasMap] = useState<Record<string, string>>({});
   // prompt for bulk-apply when user changes a category/subcategory on a row with siblings
   const [bulkPrompt, setBulkPrompt] = useState<{
     field: 'category' | 'subcategory';
@@ -164,7 +169,18 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
         subcategoryId: (r as { subcategoryId?: string | null }).subcategoryId ?? null,
         categoryHint: r.categoryHint ?? null,
         isRecurring: false,
+        cardCode: r.cardCode ?? null,
       })));
+      // Initialize card alias map from existing aliases + new codes
+      const aliasInit: Record<string, string> = {};
+      for (const a of data.data.cardAliases ?? []) {
+        aliasInit[a.cardCode] = a.aliasName;
+      }
+      // Add any codes that don't have aliases yet (empty string = needs naming)
+      for (const code of data.data.cardCodes ?? []) {
+        if (!(code in aliasInit)) aliasInit[code] = '';
+      }
+      setCardAliasMap(aliasInit);
       setStep(1);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -184,8 +200,11 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
     setLoading(true);
     try {
       const { data } = await apiClient.post<{ success: boolean; data: { imported: number; skipped: number; batchId: string } }>('/import/pdf-confirm', {
-        rows: rowsToImport.map((r) => ({ ...r, isRecurring: r.isRecurring ?? false })),
+        rows: rowsToImport.map((r) => ({ ...r, isRecurring: r.isRecurring ?? false, cardCode: r.cardCode })),
         defaultCategoryId: defaultCategoryId || undefined,
+        cardAliases: Object.entries(cardAliasMap)
+          .filter(([, name]) => name.trim())
+          .map(([code, name]) => ({ cardCode: code, aliasName: name.trim(), institution: pdfPreview?.institution ?? 'oca' })),
       });
       setImportBatchId(data.data.batchId ?? null);
       setResult(data.data);
@@ -516,6 +535,36 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 </div>
               )}
 
+              {/* ── Card naming panel — shows when multiple card codes detected ── */}
+              {Object.keys(cardAliasMap).length > 1 && (
+                <div className="bg-surface-800/60 border border-primary-500/25 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CreditCard className="w-3.5 h-3.5 text-primary-400 flex-shrink-0" />
+                    <p className="text-xs font-semibold text-primary-300">
+                      Tarjetas detectadas — asigná un nombre a cada una
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {Object.entries(cardAliasMap).map(([code, alias]) => {
+                      const count = pdfRows.filter((r) => r.cardCode === code).length;
+                      return (
+                        <div key={code} className="flex items-center gap-2">
+                          <span className="text-xs text-surface-500 font-mono w-8 text-right flex-shrink-0">#{code}</span>
+                          <span className="text-[10px] text-surface-500 flex-shrink-0">({count} tx)</span>
+                          <input
+                            type="text"
+                            value={alias}
+                            onChange={(e) => setCardAliasMap((prev) => ({ ...prev, [code]: e.target.value }))}
+                            placeholder="Ej: Guillermo, Mamá…"
+                            className="flex-1 text-xs px-2 py-1 rounded-lg bg-surface-900 border border-surface-700 text-surface-200 placeholder:text-surface-600 focus:outline-none focus:ring-1 focus:ring-primary-500/40"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* ── Quick-classify panel ── */}
               {uncategorizedGroups.length > 0 && (
                 <div className="bg-surface-800/60 border border-warning-500/25 rounded-xl p-3 space-y-2">
@@ -579,6 +628,9 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                     <tr className="bg-surface-800 border-b border-surface-700">
                       <th className="w-8 px-2 py-2"></th>
                       <th className="text-left px-2 py-2 text-surface-400 font-medium">Fecha</th>
+                      {Object.keys(cardAliasMap).length > 1 && (
+                        <th className="text-left px-2 py-2 text-surface-400 font-medium" title="Tarjeta">Tarjeta</th>
+                      )}
                       <th className="text-left px-2 py-2 text-surface-400 font-medium">Descripción</th>
                       <th className="text-left px-2 py-2 text-surface-400 font-medium" title="Cuotas">Cuotas</th>
                       <th className="text-left px-2 py-2 text-surface-400 font-medium">Categoría</th>
@@ -597,6 +649,11 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                           <input type="checkbox" checked={row.keep} onChange={(e) => setPdfRows((prev) => prev.map((r, idx) => idx === i ? { ...r, keep: e.target.checked } : r))} className="w-3.5 h-3.5 rounded border-surface-600 bg-surface-800 text-primary-500 cursor-pointer" />
                         </td>
                         <td className="px-2 py-1.5 text-surface-400 whitespace-nowrap">{row.date}</td>
+                        {Object.keys(cardAliasMap).length > 1 && (
+                          <td className="px-2 py-1.5 text-surface-500 whitespace-nowrap text-[10px]" title={`Tarjeta #${row.cardCode ?? '?'}`}>
+                            {row.cardCode ? (cardAliasMap[row.cardCode] || `#${row.cardCode}`) : '—'}
+                          </td>
+                        )}
                         <td className="px-2 py-1.5 max-w-[120px] truncate" title={`${row.possibleDuplicate ? '⚠ Posible duplicado — ' : ''}${row.description}`}>
                           {row.possibleDuplicate && <span className="text-warning-400 mr-1" title="Posible duplicado">⚠</span>}
                           <span className={row.possibleDuplicate ? 'text-warning-300' : 'text-surface-200'}>{row.description}</span>
