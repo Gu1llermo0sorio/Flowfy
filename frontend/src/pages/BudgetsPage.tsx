@@ -36,9 +36,8 @@ const budgetSchema = z.object({
 type BudgetFormData = z.infer<typeof budgetSchema>;
 
 const categorySchema = z.object({
-  name:   z.string().min(1).max(50),
   nameEs: z.string().min(1, 'Nombre requerido').max(50),
-  icon:   z.string().min(1, 'Ingresá un emoji').max(4),
+  icon:   z.string().min(1, 'Ingresá un emoji').max(12),
   color:  z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Color hex inválido'),
 });
 type CategoryFormData = z.infer<typeof categorySchema>;
@@ -137,14 +136,14 @@ function NewCategoryModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const createCategory = useCreateCategory();
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<CategoryFormData>({
     resolver: zodResolver(categorySchema),
-    defaultValues: { name: '', nameEs: '', icon: '🛒', color: '#0d9488' },
+    defaultValues: { nameEs: '', icon: '🛒', color: '#0d9488' },
   });
   const icon = watch('icon');
   const color = watch('color');
   const [emojiGroupIdx, setEmojiGroupIdx] = useState(0);
 
   const onSubmit = async (data: CategoryFormData) => {
-    const cat = await createCategory.mutateAsync({ name: data.name || data.nameEs, nameEs: data.nameEs, icon: data.icon, color: data.color });
+    const cat = await createCategory.mutateAsync({ name: data.nameEs, nameEs: data.nameEs, icon: data.icon, color: data.color });
     onCreated(cat.id);
     onClose();
   };
