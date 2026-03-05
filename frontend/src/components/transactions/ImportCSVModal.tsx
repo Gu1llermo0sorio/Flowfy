@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, Upload, CheckCircle, AlertCircle, Loader2, FileText, ChevronRight, CreditCard, AlertTriangle } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
@@ -82,6 +82,19 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
   const [result, setResult] = useState<{ imported: number; skipped: number; batchId?: string } | null>(null);
   const [defaultCategoryId, setDefaultCategoryId] = useState('');
 
+  // Wrap onClose to ensure queries are re-invalidated when modal closes after import
+  const handleClose = useCallback(() => {
+    if (result && result.imported > 0) {
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['monthly-summary'] });
+      qc.invalidateQueries({ queryKey: ['recent-transactions'] });
+      qc.invalidateQueries({ queryKey: ['import-batches'] });
+      qc.invalidateQueries({ queryKey: ['installments-liberation'] });
+      qc.invalidateQueries({ queryKey: ['installments-projection'] });
+    }
+    onClose();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, result, qc]);
   // CSV state
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping>({});
@@ -317,7 +330,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
             <h2 className="text-base font-semibold text-surface-50">Importar movimientos</h2>
             <p className="text-xs text-surface-400 mt-0.5">Paso {step + 1} de 3 — {stepLabels[step]}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-surface-400 hover:text-surface-200">
+          <button onClick={handleClose} className="p-1.5 rounded-lg text-surface-400 hover:text-surface-200">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -799,7 +812,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                 </p>
               </div>
               <div className="flex gap-2">
-                <button onClick={onClose} className="btn-primary flex-1 py-2">Listo</button>
+                <button onClick={handleClose} className="btn-primary flex-1 py-2">Listo</button>
                 {importBatchId && (
                   <button
                     onClick={async () => {
@@ -813,7 +826,7 @@ export default function ImportCSVModal({ onClose }: ImportCSVModalProps) {
                         qc.invalidateQueries({ queryKey: ['installments-liberation'] });
                         qc.invalidateQueries({ queryKey: ['installments-projection'] });
                         addToast({ type: 'success', message: `${result.imported} transacciones eliminadas` });
-                        onClose();
+                        handleClose();
                       } catch {
                         addToast({ type: 'error', message: 'No se pudo deshacer la importación' });
                       } finally {

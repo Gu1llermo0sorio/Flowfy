@@ -423,12 +423,15 @@ function parseOCAStatement(text: string): ParsedTx[] {
     let currency: 'UYU' | 'USD' = 'UYU';
 
     // Look ahead for USD/UYU sub-line clarification (e.g. UBER, CLICKUP)
+    // IMPORTANT: only check next1 (the immediately following line).
+    // Checking next2 caused a bug where the currency marker of the NEXT
+    // transaction leaked into the CURRENT one (e.g. VETERINARIA getting
+    // NETFLIX's "US Dollar" line).
     const lookBase = amountFromNextLine ? i + 2 : i + 1;
     const next1 = lines[lookBase] ?? '';
-    const next2 = lines[lookBase + 1] ?? '';
 
-    const usdMatch = USD_LINE.exec(next1) || USD_LINE.exec(next2);
-    const uyuMatch = UYU_LINE.exec(next1) || UYU_LINE.exec(next2);
+    const usdMatch = USD_LINE.exec(next1);
+    const uyuMatch = UYU_LINE.exec(next1);
 
     if (usdMatch) {
       amount = parseMonto(usdMatch[1]);
