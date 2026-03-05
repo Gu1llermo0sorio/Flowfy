@@ -399,12 +399,16 @@ function parseOCAStatement(text: string): ParsedTx[] {
     }
 
     const day = parseInt(dayStr);
-    let month = parseInt(monthStr);
-    if (month < 1 || month > 12) month = defaultMonth;
-    let txYear = year;
-    if (month > defaultMonth) txYear = year - 1;
+    // All transactions on the statement are BILLED in the statement month,
+    // regardless of the original purchase date.  Using the statement month:
+    // 1. KPIs / monthly view show the full billed amount (matches the PDF total).
+    // 2. Installment projections work correctly (installment N in month M →
+    //    installment N+1 in month M+1).
+    // We keep the original day (clamped to valid range for the statement month).
+    const maxDay = new Date(year, defaultMonth, 0).getDate();
+    const clampedDay = Math.min(Math.max(day, 1), maxDay);
 
-    const dateStr = `${txYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dateStr = `${year}-${String(defaultMonth).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
     const description = rawDesc.trim().replace(/\s+/g, ' ');
 
     if (SKIP_PATTERNS.some((p) => p.test(description))) {
