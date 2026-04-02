@@ -28,20 +28,9 @@ interface ParsedReceipt {
 export const documentRouter = Router();
 documentRouter.use(authenticate);
 
-// ── Multer storage (local uploads/) ───────────────────────────────────────────
-const uploadDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
-  },
-});
-
+// ── Multer: memory storage (compatible with Vercel serverless) ─────────────────
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -51,12 +40,16 @@ const upload = multer({
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-async function runOCR(filePath: string): Promise<string> {
+async function runOCR(buffer: Buffer, mimeType: string): Promise<string> {
   try {
     const { createWorker } = await import('tesseract.js');
     const worker = await createWorker('spa+eng');
-    const { data } = await worker.recognize(filePath);
+    // Write to /tmp (only writable dir in serverless environments)
+    const tmpPath = `/tmp/ocr-${Date.now()}.${mimeType.includes('png') ? 'png' : 'jpg'}`;
+    fs.writeFileSync(tmpPath, buffer);
+    const { data } = await worker.recognize(tmpPath);
     await worker.terminate();
+    try { fs.unlinkSync(tmpPath); } catch { /* ok */ }
     return data.text;
   } catch {
     return '';
@@ -250,7 +243,7 @@ function looksLikeMultiItemReceipt(ocrText: string, merchant: string | null): bo
   return lineCount > 8;
 }
 
-async function analyzeWithAI(ocrText: string, imagePath: string | null): Promise<ParsedReceipt> {
+async function analyzeWithAI(ocrText: string, imagePath: string | Buffer | null, bufferMime?: string): Promise<ParsedReceipt> {
   if (!process.env.ANTHROPIC_API_KEY) return fallbackParse(ocrText);
 
   try {
@@ -262,11 +255,20 @@ async function analyzeWithAI(ocrText: string, imagePath: string | null): Promise
     const content: any[] = [];
 
     // Attach image if available
-    if (imagePath && fs.existsSync(imagePath)) {
-      const ext = path.extname(imagePath).toLowerCase();
-      const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
-      const base64 = fs.readFileSync(imagePath).toString('base64');
-      content.push({ type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } });
+    if (imagePath) {
+      let imgBuffer: Buffer | null = null;
+      let mimeType = 'image/jpeg';
+      if (Buffer.isBuffer(imagePath)) {
+        imgBuffer = imagePath;
+        mimeType = (bufferMime as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif') ?? 'image/jpeg';
+      } else if (typeof imagePath === 'string' && fs.existsSync(imagePath)) {
+        imgBuffer = fs.readFileSync(imagePath);
+        const ext = path.extname(imagePath).toLowerCase();
+        mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+      }
+      if (imgBuffer) {
+        content.push({ type: 'image', source: { type: 'base64', media_type: mimeType, data: imgBuffer.toString('base64') } });
+      }
     }
 
     const ocrSnippet = ocrText ? `\n\nTexto OCR detectado:\n${ocrText.slice(0, 2000)}` : '';
@@ -350,14 +352,11 @@ documentRouter.post('/analyze', upload.single('file'), async (req: AuthRequest, 
 
     const isImage = req.file.mimetype.startsWith('image/');
 
-    // OCR sync
-    const ocrText = isImage ? await runOCR(req.file.path) : '';
+    // OCR from buffer
+    const ocrText = isImage ? await runOCR(req.file.buffer, req.file.mimetype) : '';
 
-    // AI analysis
-    const result = await analyzeWithAI(ocrText, isImage ? req.file.path : null);
-
-    // Clean up temp file (analysis-only — not stored in DB)
-    try { fs.unlinkSync(req.file.path); } catch { /* ok */ }
+    // AI analysis — pass buffer directly for image
+    const result = await analyzeWithAI(ocrText, isImage ? req.file.buffer : null, req.file.mimetype);
 
     res.json({ success: true, data: result });
   } catch (err) {
@@ -373,8 +372,10 @@ documentRouter.post('/upload', upload.single('file'), async (req: AuthRequest, r
 
     const { prisma } = await import('../lib/prisma');
     const fileType = req.file.mimetype.startsWith('image/') ? 'image' : 'pdf';
-    const fileUrl = `/uploads/${req.file.filename}`;
+    const fileUrl = `/uploads/${req.file.originalname}`;
     const institution = (req.body.institution as string | undefined) ?? 'other';
+    const fileBuffer = req.file.buffer;
+    const fileMime = req.file.mimetype;
 
     // Create initial document record
     const doc = await prisma.importedDocument.create({
@@ -394,7 +395,7 @@ documentRouter.post('/upload', upload.single('file'), async (req: AuthRequest, r
         let extractedData: Record<string, unknown> | null = null;
 
         if (fileType === 'image') {
-          const rawText = await runOCR(req.file!.path);
+          const rawText = await runOCR(fileBuffer, fileMime);
           const amounts = extractAmounts(rawText);
           extractedData = { rawText: rawText.slice(0, 2000), amounts };
         }
