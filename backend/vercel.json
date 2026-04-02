@@ -21,10 +21,6 @@
     {
       "path": "/api/cron/recurring",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/expire-invitations",
-      "schedule": "0 * * * *"
     }
   ]
 }
