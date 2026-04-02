@@ -125,3 +125,6 @@ export function startCronJobs(): void {
   console.log('✅ Cron jobs started');
 }
 
+// ── Named exports for Vercel Cron endpoints ────────────────────────────────────
+export const runRecurringTransactions = processRecurringTransactions;
+export const runExpireInvitations = expireInvitations;

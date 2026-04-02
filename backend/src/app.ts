@@ -59,6 +59,42 @@ app.use('/api/admin', adminRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/recurring', recurringRouter);
 app.use('/api/import', importRouter);
+
+// ── Vercel Cron endpoints ──────────────────────────────────────────────────────
+// These are called by Vercel Cron on schedule. Protected by CRON_SECRET env var.
+app.get('/api/cron/:job', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const auth = req.headers.authorization;
+    if (auth !== `Bearer ${secret}`) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+  }
+
+  const { job } = req.params;
+  try {
+    if (job === 'exchange-rates') {
+      const { fetchAndStoreExchangeRate } = await import('./services/fx.service');
+      await fetchAndStoreExchangeRate();
+      res.json({ success: true, job });
+    } else if (job === 'recurring') {
+      const { runRecurringTransactions } = await import('./jobs');
+      await runRecurringTransactions();
+      res.json({ success: true, job });
+    } else if (job === 'expire-invitations') {
+      const { runExpireInvitations } = await import('./jobs');
+      await runExpireInvitations();
+      res.json({ success: true, job });
+    } else {
+      res.status(404).json({ success: false, error: 'Unknown cron job' });
+    }
+  } catch (err) {
+    console.error(`Cron job ${job} failed:`, err);
+    res.status(500).json({ success: false, error: String(err) });
+  }
+});
+
 // Protect uploads with authentication
 app.use('/uploads', (req, res, next) => {
   const authHeader = req.headers.authorization;
